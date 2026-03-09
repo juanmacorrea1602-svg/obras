@@ -1,4 +1,5 @@
-import {LayoutDashboard, FilePlus2, BarChart3, HardHat, ClipboardCheck, Gavel, Calculator} from 'lucide-react';
+
+import {LayoutDashboard, FilePlus2, BarChart3, HardHat, ClipboardCheck, Gavel, Calculator, Settings2} from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -25,6 +26,11 @@ const items = [
     icon: Gavel,
   },
   {
+    title: 'Simulador Rápido',
+    url: '/tenders/simulator',
+    icon: Calculator,
+  },
+  {
     title: 'Proyectos y Etapas',
     url: '/projects',
     icon: HardHat,
@@ -43,6 +49,11 @@ const items = [
     title: 'Reportes Semanales',
     url: '/reports',
     icon: BarChart3,
+  },
+  {
+    title: 'Sala de Máquinas',
+    url: '/settings/costs',
+    icon: Settings2,
   },
 ];
 
