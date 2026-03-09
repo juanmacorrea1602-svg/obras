@@ -1,0 +1,22 @@
+{
+  "placeholderImages": [
+    {
+      "id": "construction-1",
+      "description": "Edificio en construcción en Mar del Plata",
+      "imageUrl": "https://picsum.photos/seed/obra1/800/600",
+      "imageHint": "construction building"
+    },
+    {
+      "id": "construction-2",
+      "description": "Obreros trabajando en estructura de hormigón",
+      "imageUrl": "https://picsum.photos/seed/obra2/800/600",
+      "imageHint": "construction workers"
+    },
+    {
+      "id": "construction-logo",
+      "description": "Logo de ObraControlIA",
+      "imageUrl": "https://picsum.photos/seed/logo/200/200",
+      "imageHint": "architecture logo"
+    }
+  ]
+}
