@@ -1,5 +1,4 @@
-
-import {LayoutDashboard, FilePlus2, BarChart3, HardHat, ClipboardCheck, Gavel, Calculator, Settings2} from 'lucide-react';
+import {LayoutDashboard, FilePlus2, BarChart3, HardHat, ClipboardCheck, Gavel, Calculator, Settings2, Clock} from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -21,14 +20,14 @@ const items = [
     icon: LayoutDashboard,
   },
   {
-    title: 'Proyectos y Etapas',
+    title: 'Obras Activas',
     url: '/projects',
     icon: HardHat,
   },
   {
-    title: 'Licitaciones (Preventa)',
-    url: '/tenders',
-    icon: Gavel,
+    title: 'Pendiente de Aprobación',
+    url: '/projects/pending',
+    icon: Clock,
   },
   {
     title: 'Simulador Rápido',
