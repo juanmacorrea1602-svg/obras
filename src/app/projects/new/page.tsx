@@ -1,9 +1,10 @@
+
 "use client"
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useFirebase, useDoc, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
-import { collection, doc } from 'firebase/firestore';
+import { useFirebase, useDoc, useCollection, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
+import { collection, doc, query, orderBy } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { 
   Save, Plus, Trash2, HardHat, Gavel, Calculator, Info, 
   ShieldAlert, Loader2, DollarSign, Ruler, FileText, 
-  Upload, Sparkles, CheckCircle2, AlertTriangle 
+  Upload, Sparkles, CheckCircle2, AlertTriangle, Users 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -52,8 +53,17 @@ export default function NewProjectPage() {
   
   const { data: globalConfig } = useDoc(configRef);
 
+  // Consulta de clientes para vinculación
+  const clientsQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, 'clients'), orderBy('name'));
+  }, [firestore]);
+
+  const { data: clients, isLoading: clientsLoading } = useCollection(clientsQuery);
+
   const [formData, setFormData] = useState({
     name: '',
+    clientId: '',
     type: 'licitacion_privada',
     workType: 'vivienda_unifamiliar',
     surfaceSqm: '',
@@ -71,7 +81,8 @@ export default function NewProjectPage() {
     inactivityFactor: 0,
     contingencyReserve: 5,
     generalExpenses: 10,
-    financialCost: 2
+    financialCost: 2,
+    marginPercentage: 15
   });
 
   const [stages, setStages] = useState<StageWithBudget[]>([
@@ -147,8 +158,8 @@ export default function NewProjectPage() {
 
   const handleSubmit = async () => {
     if (!user || !firestore) return;
-    if (!formData.name || !formData.totalBudgetAmount) {
-      toast({ variant: 'destructive', title: 'Error', description: 'El nombre y presupuesto son obligatorios.' });
+    if (!formData.name || !formData.totalBudgetAmount || !formData.clientId) {
+      toast({ variant: 'destructive', title: 'Error', description: 'El nombre, cliente y presupuesto son obligatorios.' });
       return;
     }
 
@@ -312,12 +323,28 @@ export default function NewProjectPage() {
 
         <TabsContent value="general" className="mt-6">
           <Card>
-            <CardHeader><CardTitle>Identificación Técnica</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Identificación Técnica y Comercial</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-2">
-                <Label>Nombre de Referencia</Label>
+                <Label className="flex items-center gap-2"><Users className="w-4 h-4 text-primary" /> Cliente Responsable</Label>
+                <Select value={formData.clientId} onValueChange={(val) => setFormData({...formData, clientId: val})}>
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder={clientsLoading ? "Cargando clientes..." : "Seleccione el cliente..."} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients?.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground italic">El cliente debe estar previamente cargado en el Listado de Clientes.</p>
+              </div>
+              
+              <div className="grid gap-2">
+                <Label>Nombre de Referencia de la Obra</Label>
                 <Input name="name" placeholder="Ej: Torre Maral 54 - Estructura" value={formData.name} onChange={handleInputChange} />
               </div>
+              
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label>Tipología Constructiva</Label>
@@ -336,9 +363,15 @@ export default function NewProjectPage() {
                   <Input name="surfaceSqm" type="number" placeholder="0.00" value={formData.surfaceSqm} onChange={handleInputChange} />
                 </div>
               </div>
+              
               <div className="grid gap-2">
                 <Label>Monto Objetivo de Venta / Contrato ($)</Label>
                 <Input name="totalBudgetAmount" type="number" value={formData.totalBudgetAmount} onChange={handleInputChange} className="font-bold bg-primary/5" />
+              </div>
+              
+              <div className="grid gap-2">
+                <Label>Ubicación / Emplazamiento</Label>
+                <Input name="location" placeholder="Calle, Ciudad, Provincia..." value={formData.location} onChange={handleInputChange} />
               </div>
             </CardContent>
             <CardFooter className="justify-between">
@@ -546,7 +579,7 @@ export default function NewProjectPage() {
                 </CardContent>
                 <CardFooter>
                   <Button className="w-full bg-accent hover:bg-accent/90 gap-2" onClick={handleSubmit} disabled={loading || totalTechnicalCost === 0}>
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     Confirmar Ingeniería y Enviar
                   </Button>
                 </CardFooter>
