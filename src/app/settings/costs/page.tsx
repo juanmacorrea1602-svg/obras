@@ -6,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
-import { doc, collection, getDocs, deleteDoc, writeBatch } from 'firebase/firestore';
+import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
+import { doc, collection, increment } from 'firebase/firestore';
 import { HardHat, ShieldAlert, Loader2, Save, Calculator, MapPin, Layers, Database, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -68,7 +68,8 @@ export default function GlobalCostsPage() {
         contactPerson: "Ing. Marcos Paz",
         email: "obras@atlantico.com",
         status: "ACTIVO",
-        currentBalance: 0
+        currentBalance: 0,
+        creationDate: new Date().toISOString()
       });
 
       const client2 = await addDocumentNonBlocking(clientsRef, {
@@ -77,26 +78,42 @@ export default function GlobalCostsPage() {
         contactPerson: "Arq. Lucía Mendez",
         email: "administracion@varesse.com",
         status: "ACTIVO",
-        currentBalance: 0
+        currentBalance: 0,
+        creationDate: new Date().toISOString()
       });
 
-      // 2. Crear Proyectos de ejemplo
+      // 2. Crear Proyectos de ejemplo vinculados a los clientes creados
       const projectsRef = collection(firestore, 'projects');
       
-      // Proyecto 1: Edificio Activo
+      // Proyecto 1: Edificio Activo (Línea Base OK)
+      const p1Amount = 540000000;
       const p1 = await addDocumentNonBlocking(projectsRef, {
         name: "Torre Maral 60 - Estructura",
         clientId: client1.id,
         type: "licitacion_privada",
         workType: "edificio_altura",
         surfaceSqm: 4500,
-        totalBudgetAmount: 540000000,
+        totalBudgetAmount: p1Amount,
         currentStatus: "OK",
         location: "Av. Colón y la Costa, MDP",
         responsibleAnalystId: user.uid,
         marginPercentage: 18,
+        creationDate: new Date().toISOString(),
+        startDate: new Date().toISOString()
+      });
+
+      // Aplicar contrato al cliente 1
+      await addDocumentNonBlocking(collection(firestore, `clients/${client1.id}/transactions`), {
+        type: 'CONTRATO',
+        date: new Date().toISOString(),
+        amount: p1Amount,
+        remainingAmount: p1Amount,
+        reference: `Contrato Obra: Torre Maral 60`,
+        status: 'PENDIENTE',
+        projectId: p1.id,
         creationDate: new Date().toISOString()
       });
+      await updateDocumentNonBlocking(doc(firestore, 'clients', client1.id), { currentBalance: increment(p1Amount) });
 
       // Añadir items a P1
       const p1ItemsRef = collection(firestore, `projects/${p1.id}/budgetItems`);
@@ -106,7 +123,8 @@ export default function GlobalCostsPage() {
         budgetedTotalAmount: 320000000,
         currentPhysicalProgressPercentage: 45,
         accumulatedActualCost: 155000000,
-        resourceType: "material"
+        resourceType: "material",
+        projectId: p1.id
       });
       await addDocumentNonBlocking(p1ItemsRef, {
         name: "Mano de Obra Especializada",
@@ -114,32 +132,35 @@ export default function GlobalCostsPage() {
         budgetedTotalAmount: 120000000,
         currentPhysicalProgressPercentage: 40,
         accumulatedActualCost: 52000000,
-        resourceType: "labor"
+        resourceType: "labor",
+        projectId: p1.id
       });
 
-      // Proyecto 2: Licitación
+      // Proyecto 2: Licitación (Pendiente de Aprobación)
+      const p2Amount = 185000000;
       await addDocumentNonBlocking(projectsRef, {
         name: "Nave Industrial Parque Ind.",
         clientId: client2.id,
         type: "licitacion_publica",
         workType: "industrial",
         surfaceSqm: 1200,
-        totalBudgetAmount: 185000000,
-        currentStatus: "LICITACION",
+        totalBudgetAmount: p2Amount,
+        currentStatus: "PENDIENTE_APROBACION",
         location: "Ruta 88 km 5, MDP",
         responsibleAnalystId: user.uid,
         marginPercentage: 12,
         creationDate: new Date().toISOString()
       });
 
-      // Proyecto 3: Obra en Alerta
+      // Proyecto 3: Obra en Alerta (Desvío de Costo real)
+      const p3Amount = 42000000;
       const p3 = await addDocumentNonBlocking(projectsRef, {
         name: "Residencia Playa Grande",
         clientId: client1.id,
         type: "cliente_externo",
         workType: "vivienda_unifamiliar",
         surfaceSqm: 350,
-        totalBudgetAmount: 42000000,
+        totalBudgetAmount: p3Amount,
         currentStatus: "ALERTA",
         location: "Calle Alem 3400, MDP",
         responsibleAnalystId: user.uid,
@@ -147,18 +168,33 @@ export default function GlobalCostsPage() {
         creationDate: new Date().toISOString()
       });
 
+      // Aplicar contrato 2 al cliente 1
+      await addDocumentNonBlocking(collection(firestore, `clients/${client1.id}/transactions`), {
+        type: 'CONTRATO',
+        date: new Date().toISOString(),
+        amount: p3Amount,
+        remainingAmount: p3Amount,
+        reference: `Contrato Obra: Residencia Playa Grande`,
+        status: 'PENDIENTE',
+        projectId: p3.id,
+        creationDate: new Date().toISOString()
+      });
+      await updateDocumentNonBlocking(doc(firestore, 'clients', client1.id), { currentBalance: increment(p3Amount) });
+
       const p3ItemsRef = collection(firestore, `projects/${p3.id}/budgetItems`);
       await addDocumentNonBlocking(p3ItemsRef, {
         name: "Terminaciones Revestimientos",
         code: "TER-05",
         budgetedTotalAmount: 12000000,
         currentPhysicalProgressPercentage: 10,
-        accumulatedActualCost: 18000000, // Sobrecosto adrede
-        resourceType: "material"
+        accumulatedActualCost: 18000000, // Sobrecosto generado para la prueba
+        resourceType: "material",
+        projectId: p3.id
       });
 
-      toast({ title: "Escenarios Generados", description: "Se han creado 3 obras y 2 clientes de prueba." });
+      toast({ title: "Escenarios Generados", description: "Se han creado obras vinculadas a clientes reales con impacto financiero." });
     } catch (e) {
+      console.error(e);
       toast({ variant: "destructive", title: "Error al poblar datos" });
     } finally {
       setIsSeeding(false);
@@ -201,7 +237,7 @@ export default function GlobalCostsPage() {
         <div className="flex gap-2">
           <Button variant="outline" className="gap-2 border-primary/30 text-primary" onClick={seedData} disabled={isSeeding}>
             {isSeeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            Generar Escenarios de Prueba
+            Generar Escenarios Reales
           </Button>
         </div>
       </div>
