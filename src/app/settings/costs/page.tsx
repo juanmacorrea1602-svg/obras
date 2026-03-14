@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking, deleteDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
 import { doc, collection, increment, getDocs } from 'firebase/firestore';
 import { HardHat, ShieldAlert, Loader2, Save, Calculator, Layers, Sparkles, RotateCcw, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -96,13 +96,11 @@ export default function GlobalCostsPage() {
               const subColPath = `${colName}/${docId}/${sub}`;
               const subSnap = await getDocs(collection(firestore, subColPath));
               subSnap.forEach(s => {
-                // Borrado no bloqueante de cada documento hijo
                 deleteDocumentNonBlocking(doc(firestore, subColPath, s.id));
               });
             }
           }
           
-          // Finalmente borramos el documento raíz (después de disparar el borrado de sus hijos)
           deleteDocumentNonBlocking(rootDocRef);
         }
       }
@@ -119,17 +117,18 @@ export default function GlobalCostsPage() {
     }
   };
 
-  const seedData = () => {
+  const seedData = async () => {
     if (!firestore || !user) return;
     setIsSeeding(true);
     
     try {
-      // --- ESCENARIO 1: DESARROLLADORA (OBRA ACTIVA CON EVM) ---
+      // --- ESCENARIO 1: DESARROLLADORA (OBRA ACTIVA CON EVM Y FACTURACIÓN) ---
       const client1Ref = doc(collection(firestore, 'clients'));
       const c1Id = client1Ref.id;
       const p1Ref = doc(collection(firestore, 'projects'));
       const p1Id = p1Ref.id;
-      const p1Amount = 540000000;
+      const contractAmount = 540000000;
+      const invoiceAmount = 54000000; // Factura por el 10% de anticipo
 
       // 1. Crear Cliente
       setDocumentNonBlocking(client1Ref, {
@@ -138,7 +137,7 @@ export default function GlobalCostsPage() {
         contactPerson: "Ing. Marcos Paz",
         email: "obras@atlantico.com",
         status: "ACTIVO",
-        currentBalance: p1Amount,
+        currentBalance: contractAmount + invoiceAmount, // Saldo neto (Contrato + Factura)
         creationDate: new Date().toISOString()
       }, { merge: true });
 
@@ -149,7 +148,7 @@ export default function GlobalCostsPage() {
         type: "licitacion_privada",
         workType: "edificio_altura",
         surfaceSqm: 4500,
-        totalBudgetAmount: p1Amount,
+        totalBudgetAmount: contractAmount,
         currentStatus: "OK",
         location: "Av. Colón y la Costa, MDP",
         responsibleAnalystId: user.uid,
@@ -162,21 +161,32 @@ export default function GlobalCostsPage() {
         }
       }, { merge: true });
 
-      // 3. Registrar Contrato en Cuenta Corriente del Cliente
+      // 3. Registrar Contrato (Deuda Maestra)
       setDocumentNonBlocking(doc(collection(firestore, `clients/${c1Id}/transactions`)), {
         type: 'CONTRATO',
         date: new Date().toISOString(),
-        amount: p1Amount,
-        remainingAmount: p1Amount,
+        amount: contractAmount,
+        remainingAmount: contractAmount,
         reference: `Contrato Obra: Torre Maral 60`,
         status: 'PENDIENTE',
         projectId: p1Id,
         creationDate: new Date().toISOString()
       }, { merge: true });
 
-      // 4. Cargar Ítems de Presupuesto para el Dashboard
-      const budget1Ref = doc(collection(firestore, `projects/${p1Id}/budgetItems`));
-      setDocumentNonBlocking(budget1Ref, {
+      // 4. Registrar Factura Real (Sujeta a Imputación de Cobros)
+      setDocumentNonBlocking(doc(collection(firestore, `clients/${c1Id}/transactions`)), {
+        type: 'FACTURA',
+        date: new Date().toISOString(),
+        amount: invoiceAmount,
+        remainingAmount: invoiceAmount,
+        reference: `Factura Anticipo Obra A-0001-00000123`,
+        status: 'PENDIENTE',
+        projectId: p1Id,
+        creationDate: new Date().toISOString()
+      }, { merge: true });
+
+      // 5. Cargar Ítems de Presupuesto para el Dashboard
+      setDocumentNonBlocking(doc(collection(firestore, `projects/${p1Id}/budgetItems`)), {
         name: "Hormigón Armado s/Plano",
         code: "EST-01",
         budgetedTotalAmount: 320000000,
@@ -187,8 +197,7 @@ export default function GlobalCostsPage() {
         responsibleAnalystId: user.uid
       }, { merge: true });
 
-      const budget2Ref = doc(collection(firestore, `projects/${p1Id}/budgetItems`));
-      setDocumentNonBlocking(budget2Ref, {
+      setDocumentNonBlocking(doc(collection(firestore, `projects/${p1Id}/budgetItems`)), {
         name: "Mano de Obra Especializada",
         code: "MO-01",
         budgetedTotalAmount: 120000000,
@@ -199,7 +208,7 @@ export default function GlobalCostsPage() {
         responsibleAnalystId: user.uid
       }, { merge: true });
 
-      // --- ESCENARIO 2: OBRA EN ALERTA (SOBRECOSTO) ---
+      // --- ESCENARIO 2: OBRA EN ALERTA ---
       const client2Ref = doc(collection(firestore, 'clients'));
       const c2Id = client2Ref.id;
       const p2Ref = doc(collection(firestore, 'projects'));
@@ -226,34 +235,20 @@ export default function GlobalCostsPage() {
         creationDate: new Date().toISOString()
       }, { merge: true });
 
-      // Ítem con alerta de CPI
       setDocumentNonBlocking(doc(collection(firestore, `projects/${p2Id}/budgetItems`)), {
         name: "Pintura y Revestimientos",
         code: "TERM-05",
         budgetedTotalAmount: 12000000,
         currentPhysicalProgressPercentage: 20,
-        accumulatedActualCost: 8500000, // Sobrecosto masivo
+        accumulatedActualCost: 8500000,
         resourceType: "material",
         projectId: p2Id,
         responsibleAnalystId: user.uid
       }, { merge: true });
 
-      // --- ESCENARIO 3: LICITACIÓN PENDIENTE ---
-      const p3Ref = doc(collection(firestore, 'projects'));
-      setDocumentNonBlocking(p3Ref, {
-        name: "Nave Industrial Parque Industrial Savio",
-        type: "licitacion_publica",
-        totalBudgetAmount: 1250000000,
-        currentStatus: "LICITACION",
-        location: "Ruta 88, MDP",
-        responsibleAnalystId: user.uid,
-        marginPercentage: 12,
-        creationDate: new Date().toISOString()
-      }, { merge: true });
-
       toast({ 
         title: "Escenarios Reales Listos", 
-        description: "Se han generado Clientes, Obras y movimientos financieros vinculados." 
+        description: "Se han generado Clientes, Obras y Facturas vinculadas para probar imputaciones." 
       });
     } catch (e) {
       console.error(e);
@@ -417,7 +412,7 @@ export default function GlobalCostsPage() {
           <ShieldAlert className="w-6 h-6 text-orange-600 shrink-0" />
           <div className="text-xs text-orange-800 leading-tight">
             <p className="font-bold mb-1 uppercase tracking-tighter">Advertencia de Seguridad</p>
-            Al presionar "Limpiar Entorno", el sistema ejecutará un borrado profundo de todos los datos transaccionales. Utilice esta función para resetear la plataforma antes de comenzar la carga real de su empresa. La configuración de costos cargada arriba **NO** será eliminada.
+            Al presionar "Limpiar Entorno", el sistema ejecutará un borrado profundo de todos los datos transaccionales. Utilice esta función para resetear la plataforma antes de comenzar la carga real de su empresa. La configuración de costos maestros se mantendrá.
           </div>
         </CardContent>
       </Card>

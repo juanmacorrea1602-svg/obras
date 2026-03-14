@@ -125,9 +125,11 @@ export default function ClientsPage() {
     const amount = Number(formData.get('amount'));
     const projectId = formData.get('projectId') as string;
     const targetInvoiceId = formData.get('targetInvoiceId') as string;
+    const userReference = formData.get('reference') as string;
     
     let remainingAmount = amount;
     let status = 'PENDIENTE';
+    let finalReference = userReference;
 
     // Si es un cobro directo a factura
     if (txType === 'PAGO' && allocationType === 'directo' && targetInvoiceId) {
@@ -136,6 +138,7 @@ export default function ClientsPage() {
         const amountToApply = Math.min(amount, invoice.remainingAmount);
         remainingAmount = amount - amountToApply;
         status = remainingAmount <= 0 ? 'CONCILIADO' : 'PARCIAL';
+        finalReference = `${userReference} (Aplicado a: ${invoice.reference})`;
 
         // Actualizar la factura destino
         const invoiceRef = doc(firestore, `clients/${selectedClient.id}/transactions`, targetInvoiceId);
@@ -152,7 +155,7 @@ export default function ClientsPage() {
       date: new Date().toISOString(),
       amount: amount,
       remainingAmount: remainingAmount,
-      reference: formData.get('reference') as string,
+      reference: finalReference,
       method: (formData.get('method') as string) || 'N/A',
       status: status,
       projectId: projectId || 'general',
@@ -204,7 +207,8 @@ export default function ClientsPage() {
 
       await updateDocumentNonBlocking(paymentRef, {
         remainingAmount: newPaymentRemaining,
-        status: newPaymentRemaining <= 0 ? 'CONCILIADO' : 'PARCIAL'
+        status: newPaymentRemaining <= 0 ? 'CONCILIADO' : 'PARCIAL',
+        reference: `${payment.reference} (Imputado a ${invoice.reference})`
       });
 
       toast({ title: "Imputación Exitosa", description: `Se aplicaron $${amountToApply.toLocaleString()} a la factura.` });
@@ -318,13 +322,17 @@ export default function ClientsPage() {
         <Card className="bg-orange-50 border-orange-200 shadow-none">
           <CardHeader className="pb-2">
             <CardDescription className="text-orange-600 font-bold uppercase text-[10px]">Facturas Pendientes</CardDescription>
-            <CardTitle className="text-2xl text-orange-700">---</CardTitle>
+            <CardTitle className="text-2xl text-orange-700">
+              {clients?.length ? "Analizando..." : "---"}
+            </CardTitle>
           </CardHeader>
         </Card>
         <Card className="bg-accent/5 border-accent/20 shadow-none">
           <CardHeader className="pb-2">
             <CardDescription className="text-accent font-bold uppercase text-[10px]">Cobros a Imputar</CardDescription>
-            <CardTitle className="text-2xl text-accent">---</CardTitle>
+            <CardTitle className="text-2xl text-accent">
+              {clients?.length ? "Analizando..." : "---"}
+            </CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -687,12 +695,12 @@ export default function ClientsPage() {
                       <Select name="targetInvoiceId" required={allocationType === 'directo'}>
                         <SelectTrigger><SelectValue placeholder="Elija factura con saldo..." /></SelectTrigger>
                         <SelectContent>
-                          {transactions?.filter(t => (t.type === 'FACTURA' || t.type === 'CONTRATO') && t.remainingAmount > 0).map(inv => (
+                          {transactions?.filter(t => t.type === 'FACTURA' && t.remainingAmount > 0).map(inv => (
                             <SelectItem key={inv.id} value={inv.id}>
                               {inv.reference} (Saldo: ${inv.remainingAmount.toLocaleString()})
                             </SelectItem>
                           ))}
-                          {(!transactions || transactions.filter(t => (t.type === 'FACTURA' || t.type === 'CONTRATO') && t.remainingAmount > 0).length === 0) && (
+                          {(!transactions || transactions.filter(t => t.type === 'FACTURA' && t.remainingAmount > 0).length === 0) && (
                             <SelectItem value="none" disabled>Sin facturas pendientes</SelectItem>
                           )}
                         </SelectContent>
@@ -729,7 +737,7 @@ export default function ClientsPage() {
         <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Módulo de Imputación de Cobros</DialogTitle>
-            <DialogDescription>Aplique los cobros registrados "A Cuenta" a las facturas pendientes para regularizar saldos por comprobante.</DialogDescription>
+            <DialogDescription>Aplique los cobros registrados "A Cuenta" únicamente a las facturas pendientes.</DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-6">
             <div className="grid md:grid-cols-2 gap-6">
@@ -742,7 +750,7 @@ export default function ClientsPage() {
                   <Table>
                     <TableHeader className="bg-muted/50"><TableRow><TableHead className="h-8 text-[9px]">Comprobante</TableHead><TableHead className="h-8 text-right text-[9px]">Saldo</TableHead></TableRow></TableHeader>
                     <TableBody>
-                      {transactions?.filter(t => (t.type === 'FACTURA' || t.type === 'CONTRATO') && t.remainingAmount > 0).map(inv => (
+                      {transactions?.filter(t => t.type === 'FACTURA' && t.remainingAmount > 0).map(inv => (
                         <TableRow key={inv.id} className="cursor-default hover:bg-muted/20">
                           <TableCell className="text-[10px] py-2">
                             <p className="font-bold">{inv.reference}</p>
@@ -751,7 +759,7 @@ export default function ClientsPage() {
                           <TableCell className="text-[10px] text-right font-mono">${inv.remainingAmount.toLocaleString()}</TableCell>
                         </TableRow>
                       ))}
-                      {(!transactions || transactions.filter(t => (t.type === 'FACTURA' || t.type === 'CONTRATO') && t.remainingAmount > 0).length === 0) && (
+                      {(!transactions || transactions.filter(t => t.type === 'FACTURA' && t.remainingAmount > 0).length === 0) && (
                         <TableRow><TableCell colSpan={2} className="text-center py-4 text-[10px] italic text-muted-foreground">Sin facturas pendientes</TableCell></TableRow>
                       )}
                     </TableBody>
@@ -780,11 +788,11 @@ export default function ClientsPage() {
                               size="sm" 
                               className="h-6 text-[8px] bg-accent hover:bg-accent/90" 
                               onClick={() => {
-                                const invoice = transactions?.find(t => (t.type === 'FACTURA' || t.type === 'CONTRATO') && t.remainingAmount > 0);
+                                const invoice = transactions?.find(t => t.type === 'FACTURA' && t.remainingAmount > 0);
                                 if (invoice) {
                                   handleConciliate(invoice.id, pay.id, Math.min(invoice.remainingAmount, pay.remainingAmount));
                                 } else {
-                                  toast({ title: "No hay facturas pendientes", description: "No se encontró ningún comprobante de deuda para aplicar el cobro." });
+                                  toast({ title: "No hay facturas pendientes", description: "No se encontró ninguna factura para aplicar el cobro." });
                                 }
                               }}
                             >
@@ -804,7 +812,7 @@ export default function ClientsPage() {
             <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex gap-2">
               <Info className="w-4 h-4 text-blue-600 shrink-0" />
               <p className="text-[10px] text-blue-800 leading-tight">
-                Al hacer clic en "Aplicar", el sistema descontará el monto del cobro disponible de la factura más antigua con saldo pendiente de forma automática.
+                Al hacer clic en "Aplicar", el sistema descontará el monto del cobro disponible de la factura de obra más antigua con saldo pendiente.
               </p>
             </div>
           </div>
