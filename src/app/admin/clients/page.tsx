@@ -19,7 +19,7 @@ import {
   Wallet, Loader2, FileText, Scale, CreditCard, Banknote, 
   History, Upload, CheckCircle2, AlertCircle, Briefcase, Building2,
   FileSpreadsheet, Receipt, HandCoins, ArrowRightLeft, Target, Camera,
-  Trash2
+  Trash2, Info
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
