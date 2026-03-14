@@ -12,13 +12,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, setDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
+import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, setDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, doc, where, increment } from 'firebase/firestore';
 import { 
   Users, Search, Plus, Filter, ArrowUpRight, MessageSquare, 
   Wallet, Loader2, FileText, Scale, CreditCard, Banknote, 
   History, Upload, CheckCircle2, AlertCircle, Briefcase, Building2,
-  FileSpreadsheet, Receipt, HandCoins, ArrowRightLeft, Target, Camera
+  FileSpreadsheet, Receipt, HandCoins, ArrowRightLeft, Target, Camera,
+  Trash2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -193,6 +194,19 @@ export default function ClientsPage() {
       toast({ title: "Documento Actualizado", description: "El archivo ha sido procesado correctamente." });
     } catch (e) {
       toast({ variant: "destructive", title: "Error al subir" });
+    }
+  };
+
+  const handleDeleteDoc = async (docId: string, projectId: string = "general") => {
+    if (!firestore || !selectedClient) return;
+    const finalDocId = projectId === "general" ? docId : `${docId}_${projectId}`;
+    const docRef = doc(firestore, `clients/${selectedClient.id}/documents`, finalDocId);
+    
+    try {
+      await deleteDocumentNonBlocking(docRef);
+      toast({ title: "Documento Anulado", description: "Se ha eliminado el documento del legajo." });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error al eliminar" });
     }
   };
 
@@ -491,9 +505,14 @@ export default function ClientsPage() {
                             />
                           </label>
                           {isUploaded && (
-                            <Button variant="ghost" size="sm" className="h-8 text-[10px] text-primary" asChild>
-                              <a href={isUploaded.fileUrl} target="_blank" rel="noopener noreferrer">Ver</a>
-                            </Button>
+                            <>
+                              <Button variant="ghost" size="sm" className="h-8 text-[10px] text-primary" asChild>
+                                <a href={isUploaded.fileUrl} target="_blank" rel="noopener noreferrer">Ver</a>
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-8 text-[10px] text-destructive hover:bg-destructive/10" onClick={() => handleDeleteDoc(docReq.id, "general")}>
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </>
                           )}
                         </div>
                       </div>
@@ -544,6 +563,11 @@ export default function ClientsPage() {
                                     }} 
                                   />
                                 </label>
+                                {isUploaded && (
+                                  <Button variant="ghost" size="sm" className="h-7 text-[9px] text-destructive hover:bg-destructive/10" onClick={() => handleDeleteDoc(docReq.id, project.id)}>
+                                    <Trash2 className="w-2.5 h-2.5" />
+                                  </Button>
+                                )}
                               </div>
                             </div>
                           );
