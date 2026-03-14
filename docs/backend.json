@@ -42,6 +42,18 @@
         "currentBalance": { "type": "number" }
       }
     },
+    "ClientTransaction": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["FACTURA", "PAGO", "NOTA_CREDITO"] },
+        "date": { "type": "string" },
+        "amount": { "type": "number" },
+        "method": { "type": "string" },
+        "reference": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
     "Supplier": {
       "type": "object",
       "properties": {
@@ -87,6 +99,14 @@
       {
         "path": "/clients/{clientId}",
         "definition": { "entityName": "Client" }
+      },
+      {
+        "path": "/clients/{clientId}/documents/{docId}",
+        "definition": { "entityName": "object" }
+      },
+      {
+        "path": "/clients/{clientId}/transactions/{txId}",
+        "definition": { "entityName": "ClientTransaction" }
       },
       {
         "path": "/suppliers/{supplierId}",

@@ -15,6 +15,9 @@ service cloud.firestore {
 
     match /clients/{clientId} {
       allow read, write: if isSignedIn();
+      match /{allSubcollections=**} {
+        allow read, write: if isSignedIn();
+      }
     }
 
     match /suppliers/{supplierId} {
