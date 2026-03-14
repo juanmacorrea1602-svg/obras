@@ -144,7 +144,7 @@ export default function TenderDetailPage({ params }: { params: Promise<{ tenderI
             <CardDescription className="text-white/70 uppercase text-[10px] font-bold">Precio Final de Oferta</CardDescription>
             <CardTitle className="text-2xl">${totalPriceOffer.toLocaleString()}</CardTitle>
           </CardHeader>
-        </div>
+        </Card>
       </div>
 
       <Tabs defaultValue={defaultTab} className="w-full">
