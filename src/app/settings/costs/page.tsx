@@ -6,9 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
-import { doc, collection, increment } from 'firebase/firestore';
-import { HardHat, ShieldAlert, Loader2, Save, Calculator, MapPin, Layers, Database, Sparkles } from 'lucide-react';
+import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { doc, collection, increment, getDocs, writeBatch, query } from 'firebase/firestore';
+import { HardHat, ShieldAlert, Loader2, Save, Calculator, MapPin, Layers, Database, Sparkles, Trash2, RotateCcw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function GlobalCostsPage() {
@@ -16,6 +16,7 @@ export default function GlobalCostsPage() {
   const { toast } = useToast();
   const [mounted, setMounted] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -53,6 +54,56 @@ export default function GlobalCostsPage() {
 
     setDocumentNonBlocking(configRef, data, { merge: true });
     toast({ title: "Configuración Guardada", description: "Los cálculos de presupuesto usarán estos nuevos valores." });
+  };
+
+  const handlePurge = async () => {
+    if (!firestore || !user) return;
+    
+    const confirmPurge = confirm("¿Está totalmente seguro? Esta acción eliminará TODOS los clientes, obras, gastos y legajos de personal de forma permanente para dejar la plataforma en blanco.");
+    if (!confirmPurge) return;
+
+    setIsPurging(true);
+    try {
+      const collectionsToClear = ['clients', 'projects', 'hr_files', 'suppliers', 'payment_orders'];
+      
+      for (const colName of collectionsToClear) {
+        const snapshot = await getDocs(collection(firestore, colName));
+        // Nota: En una app real con miles de docs esto se haría vía Cloud Function.
+        // Para resetear escenarios de prueba, el borrado secuencial es suficiente.
+        for (const docSnap of snapshot.docs) {
+          // Intentar borrar subcolecciones comunes (gastos, items, etc)
+          if (colName === 'projects') {
+            const subs = ['budgetItems', 'stages', 'expenses', 'physicalProgressEntries', 'documents'];
+            for (const sub of subs) {
+              const subSnap = await getDocs(collection(firestore, `projects/${docSnap.id}/${sub}`));
+              subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `projects/${docSnap.id}/${sub}`, s.id)));
+            }
+          }
+          if (colName === 'clients') {
+            const subs = ['transactions', 'documents'];
+            for (const sub of subs) {
+              const subSnap = await getDocs(collection(firestore, `clients/${docSnap.id}/${sub}`));
+              subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `clients/${docSnap.id}/${sub}`, s.id)));
+            }
+          }
+          if (colName === 'hr_files') {
+            const subSnap = await getDocs(collection(firestore, `hr_files/${docSnap.id}/documents`));
+            subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `hr_files/${docSnap.id}/documents`, s.id)));
+          }
+          
+          deleteDocumentNonBlocking(doc(firestore, colName, docSnap.id));
+        }
+      }
+      
+      toast({ 
+        title: "Entorno Reseteado", 
+        description: "Se han eliminado todos los datos. La plataforma está lista para comenzar de cero." 
+      });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error en limpieza", description: "Hubo un problema al intentar vaciar la base de datos." });
+    } finally {
+      setIsPurging(false);
+    }
   };
 
   const seedData = async () => {
@@ -235,7 +286,21 @@ export default function GlobalCostsPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2 border-primary/30 text-primary" onClick={seedData} disabled={isSeeding}>
+          <Button 
+            variant="outline" 
+            className="gap-2 border-destructive/30 text-destructive hover:bg-destructive/5" 
+            onClick={handlePurge} 
+            disabled={isPurging || isSeeding}
+          >
+            {isPurging ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+            Limpiar Entorno (Reset)
+          </Button>
+          <Button 
+            variant="outline" 
+            className="gap-2 border-primary/30 text-primary" 
+            onClick={seedData} 
+            disabled={isSeeding || isPurging}
+          >
             {isSeeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             Generar Escenarios Reales
           </Button>
