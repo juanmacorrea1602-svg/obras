@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
-import { doc, collection, increment, getDocs } from 'firebase/firestore';
+import { doc, collection, increment, getDocs, query, where } from 'firebase/firestore';
 import { HardHat, ShieldAlert, Loader2, Save, Calculator, Layers, Sparkles, RotateCcw, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -68,43 +68,43 @@ export default function GlobalCostsPage() {
       const collectionsToClear = ['clients', 'projects', 'hr_files', 'suppliers', 'payment_orders'];
       
       for (const colName of collectionsToClear) {
-        const snapshot = await getDocs(collection(firestore, colName));
+        const colRef = collection(firestore, colName);
+        const snapshot = await getDocs(colRef);
         
-        snapshot.docs.forEach(docSnap => {
+        for (const docSnap of snapshot.docs) {
           const docId = docSnap.id;
           const docPath = `${colName}/${docId}`;
           
-          // Borrado no bloqueante de subcolecciones detectadas
+          // Borrado de subcolecciones (lectura síncrona, borrado asíncrono)
           if (colName === 'projects') {
-            ['budgetItems', 'stages', 'expenses', 'physicalProgressEntries', 'documents'].forEach(sub => {
-              getDocs(collection(firestore, `${docPath}/${sub}`)).then(subSnap => {
-                subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `${docPath}/${sub}`, s.id)));
-              });
-            });
+            const subs = ['budgetItems', 'stages', 'expenses', 'physicalProgressEntries', 'documents'];
+            for (const sub of subs) {
+              const subSnap = await getDocs(collection(firestore, `${docPath}/${sub}`));
+              subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `${docPath}/${sub}`, s.id)));
+            }
           }
           
           if (colName === 'clients') {
-            ['transactions', 'documents'].forEach(sub => {
-              getDocs(collection(firestore, `${docPath}/${sub}`)).then(subSnap => {
-                subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `${docPath}/${sub}`, s.id)));
-              });
-            });
+            const subs = ['transactions', 'documents'];
+            for (const sub of subs) {
+              const subSnap = await getDocs(collection(firestore, `${docPath}/${sub}`));
+              subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `${docPath}/${sub}`, s.id)));
+            }
           }
           
           if (colName === 'hr_files') {
-            getDocs(collection(firestore, `${docPath}/documents`)).then(subSnap => {
-              subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `${docPath}/documents`, s.id)));
-            });
+            const subSnap = await getDocs(collection(firestore, `${docPath}/documents`));
+            subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `${docPath}/documents`, s.id)));
           }
           
-          // Borrar documento raíz (No bloqueante)
+          // Borrar documento raíz
           deleteDocumentNonBlocking(doc(firestore, colName, docId));
-        });
+        }
       }
       
       toast({ 
-        title: "Limpieza Iniciada", 
-        description: "Se ha disparado el borrado masivo. Los cambios se verán reflejados en breve." 
+        title: "Limpieza Completada", 
+        description: "Se han eliminado todos los registros del entorno." 
       });
     } catch (e) {
       console.error("Purge error:", e);
@@ -120,7 +120,7 @@ export default function GlobalCostsPage() {
     
     try {
       // 1. Cliente 1: Desarrolladora
-      addDocumentNonBlocking(collection(firestore, 'clients'), {
+      const client1Data = {
         name: "Desarrollos del Atlántico S.A.",
         cuit: "30-71542365-9",
         contactPerson: "Ing. Marcos Paz",
@@ -128,13 +128,15 @@ export default function GlobalCostsPage() {
         status: "ACTIVO",
         currentBalance: 0,
         creationDate: new Date().toISOString()
-      }).then(clientRef => {
-        if (!clientRef) return;
-        const cId = clientRef.id;
-        
-        // Obra Activa (Torre)
+      };
+
+      const client1Ref = await addDocumentNonBlocking(collection(firestore, 'clients'), client1Data);
+      
+      if (client1Ref) {
+        const cId = client1Ref.id;
         const p1Amount = 540000000;
-        addDocumentNonBlocking(collection(firestore, 'projects'), {
+        
+        const project1Data = {
           name: "Torre Maral 60 - Estructura",
           clientId: cId,
           type: "licitacion_privada",
@@ -147,9 +149,12 @@ export default function GlobalCostsPage() {
           marginPercentage: 18,
           creationDate: new Date().toISOString(),
           startDate: new Date().toISOString()
-        }).then(pRef => {
-          if (!pRef) return;
-          const pId = pRef.id;
+        };
+
+        const p1Ref = await addDocumentNonBlocking(collection(firestore, 'projects'), project1Data);
+        
+        if (p1Ref) {
+          const pId = p1Ref.id;
           
           // Registrar Contrato en CC
           addDocumentNonBlocking(collection(firestore, `clients/${cId}/transactions`), {
@@ -164,7 +169,7 @@ export default function GlobalCostsPage() {
           });
           updateDocumentNonBlocking(doc(firestore, 'clients', cId), { currentBalance: increment(p1Amount) });
 
-          // Ítems de Obra con avance real para Dashboard
+          // Ítems de Obra
           addDocumentNonBlocking(collection(firestore, `projects/${pId}/budgetItems`), {
             name: "Hormigón Armado s/Plano",
             code: "EST-01",
@@ -172,7 +177,8 @@ export default function GlobalCostsPage() {
             currentPhysicalProgressPercentage: 45,
             accumulatedActualCost: 155000000,
             resourceType: "material",
-            projectId: pId
+            projectId: pId,
+            responsibleAnalystId: user.uid
           });
           addDocumentNonBlocking(collection(firestore, `projects/${pId}/budgetItems`), {
             name: "Mano de Obra Especializada",
@@ -181,13 +187,14 @@ export default function GlobalCostsPage() {
             currentPhysicalProgressPercentage: 40,
             accumulatedActualCost: 52000000,
             resourceType: "labor",
-            projectId: pId
+            projectId: pId,
+            responsibleAnalystId: user.uid
           });
-        });
-      });
+        }
+      }
 
-      // 2. Cliente 2: Consorcio (Licitación)
-      addDocumentNonBlocking(collection(firestore, 'clients'), {
+      // 2. Cliente 2: Consorcio
+      const client2Data = {
         name: "Consorcio Edificio Varesse",
         cuit: "33-54879621-4",
         contactPerson: "Arq. Lucía Mendez",
@@ -195,13 +202,14 @@ export default function GlobalCostsPage() {
         status: "ACTIVO",
         currentBalance: 0,
         creationDate: new Date().toISOString()
-      }).then(clientRef => {
-        if (!clientRef) return;
-        const cId = clientRef.id;
+      };
 
+      const client2Ref = await addDocumentNonBlocking(collection(firestore, 'clients'), client2Data);
+      
+      if (client2Ref) {
         addDocumentNonBlocking(collection(firestore, 'projects'), {
           name: "Nave Industrial Parque Ind.",
-          clientId: cId,
+          clientId: client2Ref.id,
           type: "licitacion_publica",
           workType: "industrial",
           surfaceSqm: 1200,
@@ -212,13 +220,14 @@ export default function GlobalCostsPage() {
           marginPercentage: 12,
           creationDate: new Date().toISOString()
         });
-      });
+      }
 
       toast({ 
         title: "Escenarios Generados", 
         description: "Se han creado clientes y obras vinculadas para pruebas reales." 
       });
     } catch (e) {
+      console.error(e);
       toast({ variant: "destructive", title: "Error", description: "Fallo al generar datos de prueba." });
     } finally {
       setIsSeeding(false);
