@@ -1,15 +1,23 @@
+
 "use client"
 
-import {useState} from 'react';
-import {Card, CardContent, CardHeader, CardTitle, CardDescription} from '@/components/ui/card';
-import {Button} from '@/components/ui/button';
-import {MOCK_PROJECTS} from '@/lib/mock-data';
-import {FileText, Download, Send, Sparkles} from 'lucide-react';
-import {generateWeeklyReport} from '@/ai/flows/weekly-report-generation';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { MOCK_PROJECTS } from '@/lib/mock-data';
+import { FileText, Download, Send, Sparkles, Loader2 } from 'lucide-react';
+import { generateWeeklyReport } from '@/ai/flows/weekly-report-generation';
 
 export default function ReportsPage() {
   const [generating, setGenerating] = useState(false);
   const [report, setReport] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
 
   const project = MOCK_PROJECTS[0];
 
@@ -61,7 +69,7 @@ export default function ReportsPage() {
           <p className="text-muted-foreground">Generación automática de estados de situación semanal</p>
         </div>
         <Button onClick={handleGenerate} disabled={generating} className="gap-2 bg-primary">
-          {generating ? <Sparkles className="w-4 h-4 animate-pulse" /> : <FileText className="w-4 h-4" />}
+          {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
           {generating ? "Generando..." : "Generar Reporte Semanal"}
         </Button>
       </div>

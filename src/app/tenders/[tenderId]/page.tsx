@@ -1,8 +1,9 @@
+
 "use client"
 
 import { useState, use, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useFirebase, useDoc, useCollection, useMemoFirebase, updateDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
+import { useFirebase, useDoc, useCollection, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
 import { doc, collection } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -44,7 +45,7 @@ export default function TenderDetailPage({ params }: { params: Promise<{ tenderI
     
     try {
       await updateDocumentNonBlocking(tenderRef, {
-        currentStatus: 'OK', // Cambia de LICITACION a OK (Obra Activa)
+        currentStatus: 'OK', 
         adjudicationDate: new Date().toISOString(),
       });
       

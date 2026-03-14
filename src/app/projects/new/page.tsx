@@ -21,6 +21,11 @@ export default function NewProjectPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("type");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Fetch Global Config to pre-populate costs
   const configRef = user && firestore ? doc(firestore, `user_profiles/${user.uid}/config/global`) : null;
@@ -58,6 +63,8 @@ export default function NewProjectPage() {
       });
     }
   }, [globalConfig]);
+
+  if (!mounted) return null;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
