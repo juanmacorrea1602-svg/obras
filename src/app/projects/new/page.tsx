@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect } from 'react';
@@ -12,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Save, Plus, Trash2, HardHat, Gavel, Calculator, Info, 
@@ -70,7 +70,7 @@ export default function NewProjectPage() {
     fondoCese: 0,
     inactivityFactor: 0,
     contingencyReserve: 5,
-    generalExpenses: 10, // Gastos generales de empresa
+    generalExpenses: 10,
     financialCost: 2
   });
 
