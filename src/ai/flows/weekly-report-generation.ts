@@ -44,6 +44,17 @@ const WeeklyReportGenerationInputSchema = z.object({
 }).describe('Datos de entrada para generar el reporte semanal del proyecto.');
 export type WeeklyReportGenerationInput = z.infer<typeof WeeklyReportGenerationInputSchema>;
 
+// Internal schema for the prompt, with pre-processed values
+const WeeklyReportPromptInputSchema = WeeklyReportGenerationInputSchema.extend({
+  statusIcon: z.string(),
+  delayValue: z.string(),
+  formattedCpi: z.string(),
+  cpiAlert: z.string(),
+  formattedCashNeeds: z.string(),
+  formattedFinalDeviation: z.string(),
+  deviationDirection: z.string(),
+});
+
 // Output schema for the weekly report generation flow
 const WeeklyReportGenerationOutputSchema = z.object({
   reportContent: z.string().describe('Contenido completo del reporte semanal generado en formato de texto.'),
@@ -56,7 +67,7 @@ export async function generateWeeklyReport(input: WeeklyReportGenerationInput): 
 
 const weeklyReportGenerationPrompt = ai.definePrompt({
   name: 'weeklyReportGenerationPrompt',
-  input: {schema: WeeklyReportGenerationInputSchema},
+  input: {schema: WeeklyReportPromptInputSchema},
   output: {schema: WeeklyReportGenerationOutputSchema},
   system: `Actuarás como un Arquitecto de Sistemas Expert en Control de Gestión de Obras (PMO). Tu especialidad es la trazabilidad financiera de proyectos de construcción bajo normas argentinas (UECARA/UOCRA). Tu objetivo es generar un reporte semanal detallado para stakeholders, que elimine la brecha entre el presupuesto teórico y el gasto real, permitiendo una visión de avance por ítem y por etapa.
 
@@ -69,7 +80,7 @@ Instrucciones para generar el reporte:
 1.  **Resumen Ejecutivo**:
     *   Comienza con la cabecera: "REPORTE DE ESTADO DE PROYECTO (Semana del {{{reportStartDate}}} al {{{reportEndDate}}})"
     *   Incluye "Proyecto: {{{projectName}}} | Analista responsable: {{{analystName}}}"
-    *   Indica el "Estado General" con el símbolo adecuado (🔴 para ALERTA, 🟡 para PRECAUCION, 🟢 para OK) y la razón del estado.
+    *   Indica el "Estado General" con el símbolo adecuado y la razón del estado.
     *   Reporta el "Avance Físico Real" y el "Planificado", y calcula el "Retraso".
     *   Reporta la "Eficiencia de Costos (CPI)", explicando su significado y resaltando si es menor a 1.0. Si es menor a 1.0, enfatiza que es una "Alerta de sobrecosto".
     *   Reporta la "Caja Proyectada".
@@ -94,13 +105,13 @@ REPORTE DE ESTADO DE PROYECTO (Semana del {{{reportStartDate}}} al {{{reportEndD
 Proyecto: {{{projectName}}} | Analista responsable: {{{analystName}}}
 
 1. Resumen Ejecutivo (El "Flash" para el Dueño)
-Estado General: {{#if (eq overallStatus 'ALERTA')}}🔴{{else if (eq overallStatus 'PRECAUCION')}}🟡{{else}}🟢{{/if}} {{{overallStatus}}} ({{{overallStatusReason}}})
+Estado General: {{{statusIcon}}} {{{overallStatus}}} ({{{overallStatusReason}}})
 
-Avance Físico Real: {{{physicalProgress}}}% (Planificado: {{{plannedPhysicalProgress}}}% | Retraso: {{formatNumber (subtract physicalProgress plannedPhysicalProgress)}}%)
+Avance Físico Real: {{{physicalProgress}}}% (Planificado: {{{plannedPhysicalProgress}}}% | Retraso: {{{delayValue}}}%)
 
-Eficiencia de Costos (CPI): {{{cpi}}} (Por cada \$1 invertido, estamos obteniendo \${{{formatNumber cpi decimals=2}}} de valor. {{#if (lt cpi 1.0)}}🔴 Alerta de sobrecosto.{{else}}🟢 Dentro de lo esperado.{{/if}})
+Eficiencia de Costos (CPI): {{{cpi}}} (Por cada $1 invertido, estamos obteniendo \${{{formattedCpi}}} de valor. {{{cpiAlert}}})
 
-Caja Proyectada: Necesidad de fondos para la próxima semana: \${{{formatNumber projectedCashNeeds}}}
+Caja Proyectada: Necesidad de fondos para la próxima semana: \${{{formattedCashNeeds}}}
 
 2. Análisis de Desvíos Críticos (Top {{criticalDeviations.length}})
 {{#each criticalDeviations}}
@@ -112,7 +123,7 @@ Caja Proyectada: Necesidad de fondos para la próxima semana: \${{{formatNumber 
 {{/each}}
 
 3. Proyecciones (Visión de Futuro)
-Costo Final Estimado (EAC): Si mantenemos este ritmo, la obra terminará costando un {{{formatNumber estimatedFinalCostDeviationPercentage decimals=1}}}% {{#if (gt estimatedFinalCostDeviationPercentage 0)}}más{{else}}menos{{/if}} de lo presupuestado.
+Costo Final Estimado (EAC): Si mantenemos este ritmo, la obra terminará costando un {{{formattedFinalDeviation}}}% {{{deviationDirection}}} de lo presupuestado.
 
 Fecha de Entrega Estimada: {{{estimatedDeliveryDate}}} (Original: {{{originalDeliveryDate}}})
 
@@ -131,7 +142,27 @@ const generateWeeklyReportFlow = ai.defineFlow(
     outputSchema: WeeklyReportGenerationOutputSchema,
   },
   async (input) => {
-    const {output} = await weeklyReportGenerationPrompt(input);
+    // Pre-process variables for Handlebars
+    const statusIcon = input.overallStatus === 'ALERTA' ? '🔴' : input.overallStatus === 'PRECAUCION' ? '🟡' : '🟢';
+    const delayValue = (input.physicalProgress - input.plannedPhysicalProgress).toFixed(1);
+    const formattedCpi = input.cpi.toFixed(2);
+    const cpiAlert = input.cpi < 1.0 ? '🔴 Alerta de sobrecosto.' : '🟢 Dentro de lo esperado.';
+    const formattedCashNeeds = input.projectedCashNeeds.toLocaleString('es-AR');
+    const formattedFinalDeviation = Math.abs(input.estimatedFinalCostDeviationPercentage).toFixed(1);
+    const deviationDirection = input.estimatedFinalCostDeviationPercentage > 0 ? 'más' : 'menos';
+
+    const promptInput = {
+      ...input,
+      statusIcon,
+      delayValue,
+      formattedCpi,
+      cpiAlert,
+      formattedCashNeeds,
+      formattedFinalDeviation,
+      deviationDirection,
+    };
+
+    const {output} = await weeklyReportGenerationPrompt(promptInput);
     return output!;
   }
 );
