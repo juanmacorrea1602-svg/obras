@@ -5,16 +5,22 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
 import { Users, Search, Plus, Filter, ArrowUpRight, MessageSquare, Wallet, Loader2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 export default function ClientsPage() {
   const { firestore } = useFirebase();
+  const { toast } = useToast();
   const [mounted, setMounted] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -29,6 +35,42 @@ export default function ClientsPage() {
 
   if (!mounted) return null;
 
+  const handleAddClient = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!firestore) return;
+
+    setIsSubmitting(true);
+    const formData = new FormData(e.currentTarget);
+    
+    const newClient = {
+      name: formData.get('name') as string,
+      cuit: formData.get('cuit') as string,
+      contactPerson: formData.get('contactPerson') as string,
+      email: formData.get('email') as string,
+      phone: formData.get('phone') as string,
+      status: 'ACTIVO',
+      currentBalance: 0,
+      creationDate: new Date().toISOString()
+    };
+
+    try {
+      await addDocumentNonBlocking(collection(firestore, 'clients'), newClient);
+      toast({
+        title: "Cliente Registrado",
+        description: `${newClient.name} ha sido dado de alta en la cartera.`,
+      });
+      setIsDialogOpen(false);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo registrar el nuevo cliente.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const filteredClients = clients?.filter(c => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     c.cuit?.includes(searchTerm)
@@ -41,9 +83,54 @@ export default function ClientsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Clientes & Cobranzas</h1>
           <p className="text-muted-foreground">Administración de cuentas corrientes y seguimiento de cartera.</p>
         </div>
-        <Button className="gap-2 bg-primary">
-          <Plus className="w-4 h-4" /> Nuevo Cliente
-        </Button>
+        
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2 bg-primary">
+              <Plus className="w-4 h-4" /> Nuevo Cliente
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <form onSubmit={handleAddClient}>
+              <DialogHeader>
+                <DialogTitle>Alta de Cliente</DialogTitle>
+                <DialogDescription>
+                  Complete la información fiscal y de contacto para la gestión de cobranzas.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Razón Social / Nombre</Label>
+                  <Input id="name" name="name" placeholder="Ej: Constructora del Sud S.A." required />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="cuit">CUIT</Label>
+                  <Input id="cuit" name="cuit" placeholder="30-XXXXXXXX-X" required />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="contactPerson">Persona de Contacto</Label>
+                  <Input id="contactPerson" name="contactPerson" placeholder="Ej: Ing. Alberto Rossi" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="email">Email Administración</Label>
+                    <Input id="email" name="email" type="email" placeholder="admin@cliente.com" />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="phone">Teléfono</Label>
+                    <Input id="phone" name="phone" placeholder="+54 9..." />
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                  Registrar Cliente
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -64,7 +151,7 @@ export default function ClientsPage() {
             <CardDescription className="text-accent font-bold uppercase text-[10px]">Efectividad de Cobro</CardDescription>
             <CardTitle className="text-2xl text-accent">94.2%</CardTitle>
           </CardHeader>
-        </Card>
+        </div>
       </div>
 
       <Card>
