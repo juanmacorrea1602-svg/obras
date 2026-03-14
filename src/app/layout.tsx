@@ -2,6 +2,7 @@ import type {Metadata} from 'next';
 import './globals.css';
 import {SidebarProvider, SidebarInset} from '@/components/ui/sidebar';
 import {AppSidebar} from '@/components/app-sidebar';
+import {Header} from '@/components/header';
 import {Toaster} from '@/components/ui/toaster';
 import {FirebaseClientProvider} from '@/firebase/client-provider';
 import {AuthGate} from '@/components/auth-gate';
@@ -28,8 +29,9 @@ export default function RootLayout({
           <AuthGate>
             <SidebarProvider>
               <AppSidebar />
-              <SidebarInset className="overflow-x-hidden">
-                <main className="p-4 md:p-8 max-w-7xl mx-auto w-full">
+              <SidebarInset className="overflow-x-hidden flex flex-col">
+                <Header />
+                <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
                   {children}
                 </main>
               </SidebarInset>

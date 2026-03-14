@@ -1,4 +1,4 @@
-import {LayoutDashboard, FilePlus2, BarChart3, HardHat, ClipboardCheck, Gavel, Calculator, Settings2, Clock} from 'lucide-react';
+import { FilePlus2, HardHat, ClipboardCheck, Settings2, Clock, Calculator } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -15,9 +15,10 @@ import Link from 'next/link';
 
 const items = [
   {
-    title: 'Dashboard',
-    url: '/dashboard',
-    icon: LayoutDashboard,
+    title: 'Nueva Entrada de Obra',
+    url: '/projects/new',
+    icon: FilePlus2,
+    highlight: true,
   },
   {
     title: 'Obras Activas',
@@ -37,17 +38,12 @@ const items = [
   {
     title: 'Registro de Gasto',
     url: '/expenses/new',
-    icon: FilePlus2,
+    icon: Calculator,
   },
   {
     title: 'Certificación de Campo',
     url: '/progress',
     icon: ClipboardCheck,
-  },
-  {
-    title: 'Reportes Semanales',
-    url: '/reports',
-    icon: BarChart3,
   },
   {
     title: 'Sala de Máquinas',
@@ -59,9 +55,9 @@ const items = [
 export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="p-4">
+      <SidebarHeader className="p-4 border-b">
         <div className="flex items-center gap-3">
-          <div className="bg-accent rounded-lg p-2 flex items-center justify-center">
+          <div className="bg-primary rounded-lg p-2 flex items-center justify-center">
             <HardHat className="text-white w-5 h-5" />
           </div>
           <span className="font-bold text-xl tracking-tight group-data-[collapsible=icon]:hidden">ObraControlIA</span>
@@ -70,15 +66,19 @@ export function AppSidebar() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/60 uppercase text-[10px] font-bold tracking-widest group-data-[collapsible=icon]:hidden">
-            Gestión PMO
+            Operación PMO
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild tooltip={item.title}>
+                  <SidebarMenuButton 
+                    asChild 
+                    tooltip={item.title}
+                    className={item.highlight ? "bg-primary/5 text-primary font-bold hover:bg-primary/10" : ""}
+                  >
                     <Link href={item.url}>
-                      <item.icon />
+                      <item.icon className={item.highlight ? "text-primary" : ""} />
                       <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
@@ -88,9 +88,9 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4 group-data-[collapsible=icon]:hidden">
+      <SidebarFooter className="p-4 border-t group-data-[collapsible=icon]:hidden">
         <div className="bg-sidebar-accent/50 rounded-lg p-3">
-          <p className="text-xs text-sidebar-foreground/70 font-medium">Analista Senior</p>
+          <p className="text-[10px] uppercase font-bold text-muted-foreground">Analista Senior</p>
           <p className="text-sm font-semibold truncate">Juan Manuel Correa</p>
         </div>
       </SidebarFooter>
