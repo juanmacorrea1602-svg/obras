@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { doc, collection, increment, getDocs } from 'firebase/firestore';
-import { HardHat, ShieldAlert, Loader2, Save, Calculator, Layers, Sparkles, RotateCcw } from 'lucide-react';
+import { HardHat, ShieldAlert, Loader2, Save, Calculator, Layers, Sparkles, RotateCcw, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function GlobalCostsPage() {
@@ -59,15 +59,23 @@ export default function GlobalCostsPage() {
   const handlePurge = async () => {
     if (!firestore || !user) return;
     
-    if (!confirm("¿Desea resetear la plataforma? Se borrarán todas las obras, clientes y legajos. La configuración de costos se mantendrá.")) {
-      return;
-    }
+    const confirmReset = window.confirm(
+      "¿ESTÁ SEGURO QUE DESEA RESETEAR LA PLATAFORMA?\n\n" +
+      "Esta acción realizará un barrido total de:\n" +
+      "- Todas las Obras (Activas, Licitaciones y Pendientes)\n" +
+      "- Toda la cartera de Clientes y sus estados de cuenta\n" +
+      "- Todos los Legajos de Personal y Documentación\n" +
+      "- Gastos, Certificaciones y Transacciones financieras\n\n" +
+      "La configuración de costos maestros se mantendrá. Esta acción no se puede deshacer."
+    );
+
+    if (!confirmReset) return;
 
     setIsPurging(true);
     try {
-      const collectionsToClear = ['clients', 'projects', 'hr_files', 'suppliers', 'payment_orders'];
+      const rootCollections = ['clients', 'projects', 'hr_files', 'suppliers', 'payment_orders'];
       
-      for (const colName of collectionsToClear) {
+      for (const colName of rootCollections) {
         const colRef = collection(firestore, colName);
         const snapshot = await getDocs(colRef);
         
@@ -75,34 +83,37 @@ export default function GlobalCostsPage() {
           const docId = docSnap.id;
           const rootDocRef = doc(firestore, colName, docId);
           
-          // Limpieza profunda de subcolecciones para cada documento
+          // Mapeo exhaustivo de subcolecciones para limpieza profunda
           const subcollections: Record<string, string[]> = {
             'projects': ['budgetItems', 'stages', 'expenses', 'physicalProgressEntries', 'documents'],
             'clients': ['transactions', 'documents'],
             'hr_files': ['documents']
           };
 
+          // Primero limpiamos las "hojas" (subcolecciones)
           if (subcollections[colName]) {
             for (const sub of subcollections[colName]) {
-              const subSnap = await getDocs(collection(firestore, `${colName}/${docId}/${sub}`));
+              const subColPath = `${colName}/${docId}/${sub}`;
+              const subSnap = await getDocs(collection(firestore, subColPath));
               subSnap.forEach(s => {
-                deleteDocumentNonBlocking(doc(firestore, `${colName}/${docId}/${sub}`, s.id));
+                // Borrado no bloqueante de cada documento hijo
+                deleteDocumentNonBlocking(doc(firestore, subColPath, s.id));
               });
             }
           }
           
-          // Borrar documento raíz
+          // Finalmente borramos el documento raíz (después de disparar el borrado de sus hijos)
           deleteDocumentNonBlocking(rootDocRef);
         }
       }
       
       toast({ 
-        title: "Entorno Limpio", 
-        description: "Se han eliminado todos los registros correctamente." 
+        title: "Reseteo de Fábrica Completado", 
+        description: "Se han eliminado todos los registros. La base de datos está en blanco." 
       });
     } catch (e) {
       console.error("Purge error:", e);
-      toast({ variant: "destructive", title: "Error en Reset", description: "Fallo la limpieza de algunos registros." });
+      toast({ variant: "destructive", title: "Error en Limpieza", description: "Algunos registros no pudieron ser eliminados." });
     } finally {
       setIsPurging(false);
     }
@@ -113,7 +124,7 @@ export default function GlobalCostsPage() {
     setIsSeeding(true);
     
     try {
-      // --- ESCENARIO 1: DESARROLLADORA (OBRA ACTIVA) ---
+      // --- ESCENARIO 1: DESARROLLADORA (OBRA ACTIVA CON EVM) ---
       const client1Ref = doc(collection(firestore, 'clients'));
       const c1Id = client1Ref.id;
       const p1Ref = doc(collection(firestore, 'projects'));
@@ -144,10 +155,14 @@ export default function GlobalCostsPage() {
         responsibleAnalystId: user.uid,
         marginPercentage: 18,
         creationDate: new Date().toISOString(),
-        startDate: new Date().toISOString()
+        startDate: new Date().toISOString(),
+        costConfig: {
+          artPercentage: config?.artPercentage || 4,
+          fondoCese: config?.fondoCeseL1 || 12
+        }
       }, { merge: true });
 
-      // 3. Registrar Contrato en Cuenta Corriente
+      // 3. Registrar Contrato en Cuenta Corriente del Cliente
       setDocumentNonBlocking(doc(collection(firestore, `clients/${c1Id}/transactions`)), {
         type: 'CONTRATO',
         date: new Date().toISOString(),
@@ -159,8 +174,9 @@ export default function GlobalCostsPage() {
         creationDate: new Date().toISOString()
       }, { merge: true });
 
-      // 4. Cargar Ítems de Presupuesto (EVM)
-      setDocumentNonBlocking(doc(collection(firestore, `projects/${p1Id}/budgetItems`)), {
+      // 4. Cargar Ítems de Presupuesto para el Dashboard
+      const budget1Ref = doc(collection(firestore, `projects/${p1Id}/budgetItems`));
+      setDocumentNonBlocking(budget1Ref, {
         name: "Hormigón Armado s/Plano",
         code: "EST-01",
         budgetedTotalAmount: 320000000,
@@ -171,7 +187,8 @@ export default function GlobalCostsPage() {
         responsibleAnalystId: user.uid
       }, { merge: true });
 
-      setDocumentNonBlocking(doc(collection(firestore, `projects/${p1Id}/budgetItems`)), {
+      const budget2Ref = doc(collection(firestore, `projects/${p1Id}/budgetItems`));
+      setDocumentNonBlocking(budget2Ref, {
         name: "Mano de Obra Especializada",
         code: "MO-01",
         budgetedTotalAmount: 120000000,
@@ -182,42 +199,65 @@ export default function GlobalCostsPage() {
         responsibleAnalystId: user.uid
       }, { merge: true });
 
-      // --- ESCENARIO 2: LICITACIÓN PENDIENTE ---
+      // --- ESCENARIO 2: OBRA EN ALERTA (SOBRECOSTO) ---
       const client2Ref = doc(collection(firestore, 'clients'));
       const c2Id = client2Ref.id;
       const p2Ref = doc(collection(firestore, 'projects'));
+      const p2Id = p2Ref.id;
 
       setDocumentNonBlocking(client2Ref, {
-        name: "Consorcio Edificio Varesse",
-        cuit: "33-54879621-4",
-        contactPerson: "Arq. Lucía Mendez",
-        email: "administracion@varesse.com",
+        name: "Fiduciaria Playa Grande",
+        cuit: "30-55443322-1",
+        contactPerson: "Arq. Estela Mares",
         status: "ACTIVO",
-        currentBalance: 0,
+        currentBalance: 85000000,
         creationDate: new Date().toISOString()
       }, { merge: true });
 
       setDocumentNonBlocking(p2Ref, {
-        name: "Refacción Hall Central Varesse",
+        name: "Residencia Playa Grande - Terminaciones",
         clientId: c2Id,
         type: "cliente_externo",
-        workType: "vivienda_unifamiliar",
-        surfaceSqm: 120,
-        totalBudgetAmount: 45000000,
-        currentStatus: "PENDIENTE_APROBACION",
-        location: "Playa Varesse, MDP",
+        totalBudgetAmount: 85000000,
+        currentStatus: "ALERTA",
+        location: "Barrio Los Troncos, MDP",
         responsibleAnalystId: user.uid,
         marginPercentage: 15,
         creationDate: new Date().toISOString()
       }, { merge: true });
 
+      // Ítem con alerta de CPI
+      setDocumentNonBlocking(doc(collection(firestore, `projects/${p2Id}/budgetItems`)), {
+        name: "Pintura y Revestimientos",
+        code: "TERM-05",
+        budgetedTotalAmount: 12000000,
+        currentPhysicalProgressPercentage: 20,
+        accumulatedActualCost: 8500000, // Sobrecosto masivo
+        resourceType: "material",
+        projectId: p2Id,
+        responsibleAnalystId: user.uid
+      }, { merge: true });
+
+      // --- ESCENARIO 3: LICITACIÓN PENDIENTE ---
+      const p3Ref = doc(collection(firestore, 'projects'));
+      setDocumentNonBlocking(p3Ref, {
+        name: "Nave Industrial Parque Industrial Savio",
+        type: "licitacion_publica",
+        totalBudgetAmount: 1250000000,
+        currentStatus: "LICITACION",
+        location: "Ruta 88, MDP",
+        responsibleAnalystId: user.uid,
+        marginPercentage: 12,
+        creationDate: new Date().toISOString()
+      }, { merge: true });
+
       toast({ 
-        title: "Escenarios Generados", 
-        description: "Se han creado clientes y obras vinculadas para pruebas reales." 
+        title: "Escenarios Reales Listos", 
+        description: "Se han generado Clientes, Obras y movimientos financieros vinculados." 
       });
     } catch (e) {
       console.error(e);
-      toast({ variant: "destructive", title: "Error", description: "Fallo al generar datos de prueba." });
+      toast({ variant: "destructive", title: "Error", description: "Fallo al poblar datos de prueba." });
     } finally {
       setIsSeeding(false);
     }
@@ -229,7 +269,7 @@ export default function GlobalCostsPage() {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="w-8 h-8 animate-spin text-primary opacity-20" />
-        <p className="mt-4 text-muted-foreground">Abriendo Sala de Máquinas...</p>
+        <p className="mt-4 text-muted-foreground">Accediendo a la Sala de Máquinas...</p>
       </div>
     );
   }
@@ -243,7 +283,7 @@ export default function GlobalCostsPage() {
           </div>
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Sala de Máquinas</h1>
-            <p className="text-muted-foreground">Motor de cálculo y gestión de datos maestros</p>
+            <p className="text-muted-foreground">Motor de cálculo y gestión de datos maestros del sistema.</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -274,7 +314,7 @@ export default function GlobalCostsPage() {
             <CardTitle className="text-xs uppercase font-black opacity-70">Multiplicador Real</CardTitle>
             <div className="text-4xl font-black">x{multiplier.toFixed(2)}</div>
             <CardDescription className="text-white/80 text-[10px] mt-1 leading-tight">
-              Factor de costo real empresa sobre sueldo neto operario.
+              Factor de costo real empresa sobre sueldo neto del operario (Inc. Cargas y ART).
             </CardDescription>
           </CardHeader>
         </Card>
@@ -288,7 +328,7 @@ export default function GlobalCostsPage() {
             <p className="text-xl font-bold">{config?.fondoCeseL1 || 12}%</p>
           </div>
           <div className="p-4 bg-primary/5 rounded-lg border border-primary/10 flex flex-col justify-center">
-            <p className="text-[10px] font-bold uppercase text-primary">Promedio Vivienda</p>
+            <p className="text-[10px] font-bold uppercase text-primary">Ref. Vivienda</p>
             <p className="text-xl font-bold">${(config?.viviendaSqmCost || 850000).toLocaleString()}/m²</p>
           </div>
         </div>
@@ -300,37 +340,37 @@ export default function GlobalCostsPage() {
             <Card className="shadow-sm">
               <CardHeader className="bg-muted/30">
                 <CardTitle className="text-sm uppercase tracking-wider flex items-center gap-2">
-                  <HardHat className="w-4 h-4 text-primary" /> Convenio y Cargas
+                  <HardHat className="w-4 h-4 text-primary" /> Convenio UOCRA y Cargas
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-xs">Básico Oficial (Hora)</Label>
+                    <Label className="text-xs font-bold">Básico Oficial (Hora)</Label>
                     <Input name="uocraBasic" type="number" step="0.01" defaultValue={config?.uocraBasic || 0} />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs">Asistencia (%)</Label>
+                    <Label className="text-xs font-bold">Asistencia Art. 18 (%)</Label>
                     <Input name="attendanceBonus" type="number" defaultValue={config?.attendanceBonus || 20} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-xs">Contribuciones (%)</Label>
+                    <Label className="text-xs font-bold">Contribuciones (%)</Label>
                     <Input name="socialCharges" type="number" defaultValue={config?.socialCharges || 24} />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs">Fondo Cese (%)</Label>
+                    <Label className="text-xs font-bold">Fondo Cese (%)</Label>
                     <Input name="fondoCeseL1" type="number" defaultValue={config?.fondoCeseL1 || 12} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-xs">ART (%)</Label>
+                    <Label className="text-xs font-bold">Alícuota ART (%)</Label>
                     <Input name="artPercentage" type="number" defaultValue={config?.artPercentage || 4} />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs">Inactividad (%)</Label>
+                    <Label className="text-xs font-bold">Coef. Inactividad (%)</Label>
                     <Input name="inactivityFactor" type="number" defaultValue={config?.inactivityFactor || 15} />
                   </div>
                 </div>
@@ -342,17 +382,17 @@ export default function GlobalCostsPage() {
             <Card className="shadow-sm border-primary/20">
               <CardHeader className="bg-primary/5">
                 <CardTitle className="text-sm uppercase tracking-wider flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-primary" /> Costos Ref. m²
+                  <Layers className="w-4 h-4 text-primary" /> Costos de Referencia m²
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-6 space-y-4">
                 <div className="grid gap-4">
                   <div className="grid gap-2">
-                    <Label className="text-xs font-bold">Vivienda Unifamiliar ($/m²)</Label>
+                    <Label className="text-xs font-bold">Vivienda Unifamiliar Estándar ($/m²)</Label>
                     <Input name="viviendaSqmCost" type="number" defaultValue={config?.viviendaSqmCost || 850000} />
                   </div>
                   <div className="grid gap-2">
-                    <Label className="text-xs font-bold">Edificio en Altura ($/m²)</Label>
+                    <Label className="text-xs font-bold">Edificio en Altura (Estructura) ($/m²)</Label>
                     <Input name="edificioSqmCost" type="number" defaultValue={config?.edificioSqmCost || 1200000} />
                   </div>
                   <div className="grid gap-2">
@@ -367,7 +407,7 @@ export default function GlobalCostsPage() {
 
         <div className="flex justify-end">
           <Button type="submit" className="gap-2 bg-primary">
-            <Save className="w-4 h-4" /> Guardar Cambios
+            <Save className="w-4 h-4" /> Guardar Configuración Maestra
           </Button>
         </div>
       </form>
@@ -376,8 +416,8 @@ export default function GlobalCostsPage() {
         <CardContent className="p-4 flex gap-4">
           <ShieldAlert className="w-6 h-6 text-orange-600 shrink-0" />
           <div className="text-xs text-orange-800 leading-tight">
-            <p className="font-bold mb-1 uppercase tracking-tighter">Nota Técnica</p>
-            Al resetear el entorno, se eliminarán permanentemente las obras y clientes para que puedas iniciar tu propia carga. La configuración de costos se mantiene para facilitar tus nuevos presupuestos.
+            <p className="font-bold mb-1 uppercase tracking-tighter">Advertencia de Seguridad</p>
+            Al presionar "Limpiar Entorno", el sistema ejecutará un borrado profundo de todos los datos transaccionales. Utilice esta función para resetear la plataforma antes de comenzar la carga real de su empresa. La configuración de costos cargada arriba **NO** será eliminada.
           </div>
         </CardContent>
       </Card>
