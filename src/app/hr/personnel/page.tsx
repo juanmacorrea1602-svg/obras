@@ -10,11 +10,33 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy } from 'firebase/firestore';
-import { UserCircle, Search, Plus, FileText, ShieldCheck, HeartPulse, UserPlus, Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase';
+import { collection, query, orderBy, doc } from 'firebase/firestore';
+import { UserCircle, Search, Plus, FileText, ShieldCheck, HeartPulse, UserPlus, Loader2, Calendar, AlertTriangle, CheckCircle2, XCircle, Upload, HardHat } from 'lucide-react';
+import { format, isAfter, isBefore, addDays, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+
+// Definición de requerimientos por categoría
+const REQUIRED_DOCS = {
+  common: [
+    { id: 'dni', name: 'DNI (Frente y Dorso)', expiry: false },
+    { id: 'cuil', name: 'Constancia de CUIL', expiry: false },
+    { id: 'alta_afip', name: 'Alta Temprana AFIP', expiry: false },
+    { id: 'art', name: 'Certificado de Cobertura ART', expiry: true },
+  ],
+  uocra: [
+    { id: 'ieric', name: 'Credencial IERIC', expiry: true },
+    { id: 'epp', name: 'Entrega de Ropa y EPP', expiry: true },
+    { id: 'psico', name: 'Examen Psicotécnico', expiry: true },
+  ],
+  uecara: [
+    { id: 'titulo', name: 'Título Habilitante', expiry: false },
+    { id: 'seguro_vida', name: 'Seguro de Vida Adicional', expiry: true },
+  ]
+};
 
 export default function PersonnelPage() {
   const { firestore } = useFirebase();
@@ -23,6 +45,10 @@ export default function PersonnelPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Detalle de Legajo
+  const [selectedPerson, setSelectedPerson] = useState<any | null>(null);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -34,6 +60,14 @@ export default function PersonnelPage() {
   }, [firestore]);
 
   const { data: hrFiles, isLoading } = useCollection(hrFilesQuery);
+
+  // Consulta de documentos del legajo seleccionado
+  const docsQuery = useMemoFirebase(() => {
+    if (!firestore || !selectedPerson) return null;
+    return collection(firestore, `hr_files/${selectedPerson.id}/documents`);
+  }, [firestore, selectedPerson]);
+
+  const { data: currentDocs } = useCollection(docsQuery);
 
   const handleAddPersonnel = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -69,12 +103,53 @@ export default function PersonnelPage() {
     }
   };
 
+  const handleUploadDoc = async (requirementId: string, expiryDate?: string) => {
+    if (!firestore || !selectedPerson) return;
+
+    const docRef = doc(firestore, `hr_files/${selectedPerson.id}/documents`, requirementId);
+    const docData = {
+      requirementId,
+      status: 'CARGADO',
+      uploadDate: new Date().toISOString(),
+      expiryDate: expiryDate || null,
+      fileUrl: 'https://placehold.co/400x600?text=Documento+Escaneado' // Mock URL
+    };
+
+    try {
+      setDocumentNonBlocking(docRef, docData, { merge: true });
+      toast({ title: "Documento Actualizado" });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error al cargar" });
+    }
+  };
+
+  const getDocStatus = (requirementId: string) => {
+    const doc = currentDocs?.find(d => d.requirementId === requirementId);
+    if (!doc) return { label: 'Faltante', color: 'text-destructive', icon: XCircle };
+
+    if (doc.expiryDate) {
+      const expiry = parseISO(doc.expiryDate);
+      const today = new Date();
+      const warningThreshold = addDays(today, 15);
+
+      if (isBefore(expiry, today)) return { label: 'VENCIDO', color: 'text-red-600 font-black', icon: AlertTriangle };
+      if (isBefore(expiry, warningThreshold)) return { label: 'Por Vencer', color: 'text-orange-500 font-bold', icon: AlertTriangle };
+    }
+
+    return { label: 'Vigente', color: 'text-green-600', icon: CheckCircle2 };
+  };
+
   if (!mounted) return null;
 
   const filteredFiles = hrFiles?.filter(person => 
     person.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     person.dni.includes(searchTerm)
   );
+
+  const getRequirements = (category: string) => {
+    const isUocra = category.includes('UOCRA');
+    return [...REQUIRED_DOCS.common, ...(isUocra ? REQUIRED_DOCS.uocra : REQUIRED_DOCS.uecara)];
+  };
 
   return (
     <div className="space-y-6">
@@ -147,13 +222,13 @@ export default function PersonnelPage() {
             <p className="text-2xl font-bold">{hrFiles?.length || 0}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="bg-red-50 border-red-100">
           <CardHeader className="p-4 flex flex-row items-center justify-between space-y-0">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase">Doc. Vencida</p>
-            <FileText className="w-4 h-4 text-destructive" />
+            <p className="text-[10px] font-bold text-red-600 uppercase">Doc. Vencida / Alerta</p>
+            <FileText className="w-4 h-4 text-red-600" />
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <p className="text-2xl font-bold text-destructive">0</p>
+            <p className="text-2xl font-bold text-red-700">3</p>
           </CardContent>
         </Card>
         <Card>
@@ -167,11 +242,11 @@ export default function PersonnelPage() {
         </Card>
         <Card>
           <CardHeader className="p-4 flex flex-row items-center justify-between space-y-0">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase">Credenciales SRT</p>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase">Fondo Cese (%)</p>
             <ShieldCheck className="w-4 h-4 text-primary" />
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            <p className="text-2xl font-bold">---</p>
+            <p className="text-2xl font-bold">12%</p>
           </CardContent>
         </Card>
       </div>
@@ -201,7 +276,7 @@ export default function PersonnelPage() {
                 <TableHead>DNI</TableHead>
                 <TableHead>Categoría / Convenio</TableHead>
                 <TableHead>Ingreso</TableHead>
-                <TableHead>Estado</TableHead>
+                <TableHead>Documentación</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -221,12 +296,22 @@ export default function PersonnelPage() {
                     {person.entryDate ? format(new Date(person.entryDate), 'dd/MM/yy') : '---'}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={person.status === 'ACTIVO' ? 'secondary' : 'outline'} className="text-[10px]">
-                      {person.status}
+                    <Badge variant="outline" className="text-[9px] gap-1">
+                      <ShieldCheck className="w-3 h-3 text-green-600" /> 80% Completo
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm">Ver Legajo</Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="text-primary font-bold hover:bg-primary/5"
+                      onClick={() => {
+                        setSelectedPerson(person);
+                        setIsSheetOpen(true);
+                      }}
+                    >
+                      Ver Legajo Digital
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -241,6 +326,133 @@ export default function PersonnelPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Panel Detalle de Legajo */}
+      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <SheetContent className="sm:max-w-xl overflow-y-auto">
+          <SheetHeader className="border-b pb-4 mb-6">
+            <div className="flex items-center gap-4">
+              <div className="bg-primary/10 p-3 rounded-full">
+                <UserCircle className="w-8 h-8 text-primary" />
+              </div>
+              <div>
+                <SheetTitle className="text-xl">{selectedPerson?.fullName}</SheetTitle>
+                <SheetDescription className="flex items-center gap-2">
+                  <Badge variant="secondary">{selectedPerson?.category}</Badge>
+                  <span className="text-[10px] uppercase font-bold text-muted-foreground">CUIL: {selectedPerson?.dni}</span>
+                </SheetDescription>
+              </div>
+            </div>
+          </SheetHeader>
+
+          <Tabs defaultValue="docs" className="space-y-6">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="info">Info. General</TabsTrigger>
+              <TabsTrigger value="docs">Documentación Digital</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="info" className="space-y-4">
+              <div className="grid gap-4 p-4 bg-muted/30 rounded-lg border">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground uppercase">Fecha Ingreso</Label>
+                    <p className="font-medium">{selectedPerson?.entryDate ? format(new Date(selectedPerson.entryDate), 'PPP') : '---'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground uppercase">Estado Laboral</Label>
+                    <Badge className="block w-fit bg-green-100 text-green-700 hover:bg-green-100 border-green-200">ACTIVO</Badge>
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground uppercase">Convenio</Label>
+                    <p className="font-medium">{selectedPerson?.category?.includes('UOCRA') ? 'CCT 76/75' : 'CCT 660/13'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground uppercase">Zona Salarial</Label>
+                    <p className="font-medium">Zona A (PBA)</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 border-2 border-dashed rounded-lg text-center bg-muted/5">
+                <HardHat className="w-8 h-8 mx-auto text-muted-foreground opacity-30 mb-2" />
+                <p className="text-xs text-muted-foreground">Historial de Obra y Novedades (Proximamente)</p>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="docs" className="space-y-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold uppercase tracking-tight text-primary">Requerimientos Obligatorios</h3>
+                <div className="flex items-center gap-2 text-[10px] font-bold">
+                  <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500" /> OK</span>
+                  <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-orange-500" /> Vence</span>
+                  <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-red-500" /> Faltante</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {selectedPerson && getRequirements(selectedPerson.category).map((req) => {
+                  const status = getDocStatus(req.id);
+                  const isUploaded = currentDocs?.some(d => d.requirementId === req.id);
+                  const docData = currentDocs?.find(d => d.requirementId === req.id);
+
+                  return (
+                    <div key={req.id} className="p-3 border rounded-lg hover:bg-muted/10 transition-colors">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <status.icon className={cn("w-5 h-5", status.color)} />
+                          <div>
+                            <p className="text-xs font-bold leading-none">{req.name}</p>
+                            <p className={cn("text-[10px] mt-1 uppercase tracking-tighter", status.color)}>{status.label}</p>
+                          </div>
+                        </div>
+                        {isUploaded ? (
+                          <div className="flex gap-1">
+                            <Button variant="outline" size="sm" className="h-7 text-[10px]">Ver Archivo</Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={() => handleUploadDoc(req.id, docData?.expiryDate)}><Upload className="w-3 h-3" /></Button>
+                          </div>
+                        ) : (
+                          <Button 
+                            variant="secondary" 
+                            size="sm" 
+                            className="h-7 text-[10px] gap-1"
+                            onClick={() => handleUploadDoc(req.id)}
+                          >
+                            <Upload className="w-3 h-3" /> Cargar
+                          </Button>
+                        )}
+                      </div>
+                      
+                      {req.expiry && (
+                        <div className="flex items-center gap-4 pl-8">
+                          <div className="flex-1">
+                            <Label className="text-[9px] uppercase text-muted-foreground">Fecha Vencimiento</Label>
+                            <Input 
+                              type="date" 
+                              className="h-7 text-[10px]" 
+                              defaultValue={docData?.expiryDate || ''}
+                              onBlur={(e) => handleUploadDoc(req.id, e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <SheetFooter className="mt-8 pt-4 border-t">
+            <div className="flex items-center gap-3 w-full">
+              <div className="bg-orange-50 p-3 rounded border border-orange-100 flex-1 flex gap-3">
+                <AlertTriangle className="w-5 h-5 text-orange-600 shrink-0" />
+                <p className="text-[10px] text-orange-800 leading-tight">
+                  <span className="font-bold">Protocolo SRT:</span> El personal no debe ingresar a obra si la ART o el Seguro de Vida están vencidos.
+                </p>
+              </div>
+            </div>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
