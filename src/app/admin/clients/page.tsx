@@ -18,7 +18,7 @@ import {
   Users, Search, Plus, Filter, ArrowUpRight, MessageSquare, 
   Wallet, Loader2, FileText, Scale, CreditCard, Banknote, 
   History, Upload, CheckCircle2, AlertCircle, Briefcase, Building2,
-  FileSpreadsheet, Receipt, HandCoins, ArrowRightLeft, Target
+  FileSpreadsheet, Receipt, HandCoins, ArrowRightLeft, Target, Camera
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -45,7 +45,6 @@ export default function ClientsPage() {
   
   // Detalle de Cliente
   const [selectedClient, setSelectedClient] = useState<any | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("general");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
 
   // Estados de Transacción
@@ -137,10 +136,8 @@ export default function ClientsPage() {
     };
 
     try {
-      // 1. Agregar transacción
       await addDocumentNonBlocking(collection(firestore, `clients/${selectedClient.id}/transactions`), newTx);
       
-      // 2. Actualizar saldo del cliente (Deuda sube con factura, baja con pago)
       const balanceChange = (txType === 'PAGO') ? -amount : amount;
       const clientRef = doc(firestore, 'clients', selectedClient.id);
       await updateDocumentNonBlocking(clientRef, {
@@ -163,13 +160,11 @@ export default function ClientsPage() {
     const paymentRef = doc(firestore, `clients/${selectedClient.id}/transactions`, paymentId);
 
     try {
-      // Restar del pendiente de la factura
       await updateDocumentNonBlocking(invoiceRef, {
         remainingAmount: increment(-amountToApply),
-        status: 'PARCIAL' // Simplificado para el MVP
+        status: 'PARCIAL'
       });
 
-      // Restar del pendiente del pago
       await updateDocumentNonBlocking(paymentRef, {
         remainingAmount: increment(-amountToApply),
         status: 'CONCILIADO'
@@ -193,9 +188,9 @@ export default function ClientsPage() {
         projectId: projectId,
         status: 'CARGADO',
         uploadDate: new Date().toISOString(),
-        fileUrl: 'https://placehold.co/400x600?text=Doc+Fiscal'
+        fileUrl: 'https://placehold.co/400x600?text=Doc+Escaneado'
       }, { merge: true });
-      toast({ title: "Documento Actualizado" });
+      toast({ title: "Documento Actualizado", description: "El archivo ha sido procesado correctamente." });
     } catch (e) {
       toast({ variant: "destructive", title: "Error al subir" });
     }
@@ -457,84 +452,107 @@ export default function ClientsPage() {
               </div>
             </TabsContent>
 
-            <TabsContent value="docs" className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold uppercase tracking-tight text-primary">Documentación del Cliente</h3>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-[10px] font-bold text-muted-foreground">VER POR:</Label>
-                    <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-                      <SelectTrigger className="h-8 w-[200px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="general">Legajo Institucional</SelectItem>
-                        {clientProjects?.map(p => (
-                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+            <TabsContent value="docs" className="space-y-8">
+              <div className="space-y-6">
+                <div className="border-b pb-2">
+                  <h3 className="text-sm font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                    <Building2 className="w-4 h-4" /> Legajo Institucional
+                  </h3>
+                  <p className="text-[10px] text-muted-foreground">Documentación fiscal base de la razón social</p>
                 </div>
-
+                
                 <div className="grid gap-3">
-                  {selectedProjectId === "general" ? (
-                    <>
-                      <p className="text-[10px] font-black text-muted-foreground border-b pb-1 uppercase tracking-widest">Documentos Fiscales Base</p>
-                      {CLIENT_GENERAL_DOCS.map((docReq) => {
-                        const isUploaded = currentDocs?.find(d => d.typeId === docReq.id && d.projectId === "general");
-                        return (
-                          <div key={docReq.id} className="p-4 border rounded-lg flex items-center justify-between hover:bg-muted/5 transition-colors">
-                            <div className="flex items-center gap-3">
-                              {isUploaded ? <CheckCircle2 className="w-5 h-5 text-accent" /> : <AlertCircle className="w-5 h-5 text-orange-400" />}
-                              <div>
-                                <p className="text-xs font-bold">{docReq.name}</p>
-                                <p className="text-[10px] text-muted-foreground">
-                                  {isUploaded ? `Cargado el ${format(new Date(isUploaded.uploadDate), 'dd/MM/yyyy')}` : 'Documento faltante'}
-                                </p>
-                              </div>
-                            </div>
-                            <Button variant={isUploaded ? "outline" : "secondary"} size="sm" className="h-8 text-[10px] gap-2" onClick={() => handleUploadDoc(docReq.id, "general")}>
-                              {isUploaded ? <FileText className="w-3 h-3" /> : <Upload className="w-3 h-3" />}
-                              {isUploaded ? "Ver" : "Cargar"}
-                            </Button>
+                  {CLIENT_GENERAL_DOCS.map((docReq) => {
+                    const isUploaded = currentDocs?.find(d => d.typeId === docReq.id && d.projectId === "general");
+                    return (
+                      <div key={docReq.id} className="p-4 border rounded-lg flex items-center justify-between hover:bg-muted/5 transition-colors bg-background">
+                        <div className="flex items-center gap-3">
+                          {isUploaded ? <CheckCircle2 className="w-5 h-5 text-accent" /> : <AlertCircle className="w-5 h-5 text-orange-400" />}
+                          <div>
+                            <p className="text-xs font-bold">{docReq.name}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {isUploaded ? `Cargado el ${format(new Date(isUploaded.uploadDate), 'dd/MM/yyyy')}` : 'Documento requerido'}
+                            </p>
                           </div>
-                        );
-                      })}
-                    </>
-                  ) : (
-                    <>
-                      <div className="bg-primary/5 p-3 rounded-lg border border-primary/10 flex items-center gap-3 mb-2">
-                        <Building2 className="w-5 h-5 text-primary" />
-                        <div>
-                          <p className="text-xs font-bold text-primary">Obra: {clientProjects?.find(p => p.id === selectedProjectId)?.name}</p>
-                          <p className="text-[10px] text-muted-foreground">Legajo Técnico y Contractual del Proyecto</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <label className="cursor-pointer">
+                            <Button variant={isUploaded ? "outline" : "secondary"} size="sm" className="h-8 text-[10px] gap-2 pointer-events-none">
+                              {isUploaded ? <Camera className="w-3 h-3" /> : <Upload className="w-3 h-3" />}
+                              {isUploaded ? "Re-escanear" : "Subir / Escanear"}
+                            </Button>
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              accept="image/*,application/pdf" 
+                              onChange={(e) => {
+                                if (e.target.files?.[0]) handleUploadDoc(docReq.id, "general");
+                              }} 
+                            />
+                          </label>
+                          {isUploaded && (
+                            <Button variant="ghost" size="sm" className="h-8 text-[10px] text-primary" asChild>
+                              <a href={isUploaded.fileUrl} target="_blank" rel="noopener noreferrer">Ver</a>
+                            </Button>
+                          )}
                         </div>
                       </div>
-                      {CLIENT_PROJECT_DOCS.map((docReq) => {
-                        const isUploaded = currentDocs?.find(d => d.typeId === docReq.id && d.projectId === selectedProjectId);
-                        return (
-                          <div key={docReq.id} className="p-4 border rounded-lg flex items-center justify-between hover:bg-muted/5 transition-colors">
-                            <div className="flex items-center gap-3">
-                              {isUploaded ? <CheckCircle2 className="w-5 h-5 text-accent" /> : <AlertCircle className="w-5 h-5 text-orange-400" />}
-                              <div>
-                                <p className="text-xs font-bold">{docReq.name}</p>
-                                <p className="text-[10px] text-muted-foreground">
-                                  {isUploaded ? `Cargado el ${format(new Date(isUploaded.uploadDate), 'dd/MM/yyyy')}` : 'Requerido para la obra'}
-                                </p>
-                              </div>
-                            </div>
-                            <Button variant={isUploaded ? "outline" : "secondary"} size="sm" className="h-8 text-[10px] gap-2" onClick={() => handleUploadDoc(docReq.id, selectedProjectId)}>
-                              {isUploaded ? <FileText className="w-3 h-3" /> : <Upload className="w-3 h-3" />}
-                              {isUploaded ? "Ver" : "Cargar"}
-                            </Button>
-                          </div>
-                        );
-                      })}
-                    </>
-                  )}
+                    );
+                  })}
                 </div>
               </div>
+
+              {clientProjects && clientProjects.length > 0 && (
+                <div className="space-y-6">
+                  <div className="border-b pb-2">
+                    <h3 className="text-sm font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                      <Briefcase className="w-4 h-4" /> Legajos Específicos por Obra
+                    </h3>
+                    <p className="text-[10px] text-muted-foreground">Contratos y pólizas vinculadas a cada proyecto activo</p>
+                  </div>
+                  
+                  {clientProjects.map((project) => (
+                    <div key={project.id} className="space-y-3 pl-4 border-l-2 border-primary/10">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="outline" className="bg-primary/5 text-primary text-[9px] font-bold border-primary/20">OBRA: {project.name}</Badge>
+                      </div>
+                      <div className="grid gap-2">
+                        {CLIENT_PROJECT_DOCS.map((docReq) => {
+                          const isUploaded = currentDocs?.find(d => d.typeId === docReq.id && d.projectId === project.id);
+                          return (
+                            <div key={`${project.id}-${docReq.id}`} className="p-3 border rounded-lg flex items-center justify-between hover:bg-muted/5 transition-colors bg-background/50">
+                              <div className="flex items-center gap-3">
+                                {isUploaded ? <CheckCircle2 className="w-4 h-4 text-accent" /> : <AlertCircle className="w-4 h-4 text-orange-400" />}
+                                <div>
+                                  <p className="text-[11px] font-bold">{docReq.name}</p>
+                                  <p className="text-[9px] text-muted-foreground italic">
+                                    {isUploaded ? `Vigente desde: ${format(new Date(isUploaded.uploadDate), 'dd/MM/yy')}` : 'Faltante en legajo técnico'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <label className="cursor-pointer">
+                                  <Button variant={isUploaded ? "outline" : "secondary"} size="sm" className="h-7 text-[9px] gap-2 pointer-events-none">
+                                    <Upload className="w-2.5 h-2.5" /> {isUploaded ? "Actualizar" : "Subir / Escanear"}
+                                  </Button>
+                                  <input 
+                                    type="file" 
+                                    className="hidden" 
+                                    accept="image/*,application/pdf" 
+                                    onChange={(e) => {
+                                      if (e.target.files?.[0]) handleUploadDoc(docReq.id, project.id);
+                                    }} 
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </TabsContent>
           </Tabs>
 
