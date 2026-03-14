@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect } from 'react';
@@ -11,22 +10,27 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, doc } from 'firebase/firestore';
+import { collection, query, orderBy, doc, where } from 'firebase/firestore';
 import { 
   Users, Search, Plus, Filter, ArrowUpRight, MessageSquare, 
   Wallet, Loader2, FileText, Scale, CreditCard, Banknote, 
-  History, Upload, CheckCircle2, XCircle, AlertCircle
+  History, Upload, CheckCircle2, AlertCircle, Briefcase, Building2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
-const CLIENT_REQUIRED_DOCS = [
+const CLIENT_GENERAL_DOCS = [
   { id: 'constancia_afip', name: 'Constancia de Inscripción AFIP' },
   { id: 'iibb', name: 'Constancia de IIBB / Convenio Multilateral' },
+];
+
+const CLIENT_PROJECT_DOCS = [
   { id: 'contrato', name: 'Contrato de Obra Firmado' },
   { id: 'seguro_caucion', name: 'Póliza de Caución (Anticipo/Ejecución)' },
+  { id: 'acta_inicio', name: 'Acta de Inicio de Obra' },
 ];
 
 export default function ClientsPage() {
@@ -39,6 +43,7 @@ export default function ClientsPage() {
   
   // Detalle de Cliente
   const [selectedClient, setSelectedClient] = useState<any | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("general");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
 
   useEffect(() => {
@@ -63,8 +68,14 @@ export default function ClientsPage() {
     return query(collection(firestore, `clients/${selectedClient.id}/transactions`), orderBy('date', 'desc'));
   }, [firestore, selectedClient]);
 
+  const clientProjectsQuery = useMemoFirebase(() => {
+    if (!firestore || !selectedClient) return null;
+    return query(collection(firestore, 'projects'), where('clientId', '==', selectedClient.id));
+  }, [firestore, selectedClient]);
+
   const { data: currentDocs } = useCollection(docsQuery);
   const { data: transactions } = useCollection(txQuery);
+  const { data: clientProjects } = useCollection(clientProjectsQuery);
 
   if (!mounted) return null;
 
@@ -97,12 +108,18 @@ export default function ClientsPage() {
     }
   };
 
-  const handleUploadDoc = async (docId: string) => {
+  const handleUploadDoc = async (docId: string, projectId: string = "general") => {
     if (!firestore || !selectedClient) return;
-    const docRef = doc(firestore, `clients/${selectedClient.id}/documents`, docId);
+    
+    // El ID del documento se compone por el tipo + el proyecto para permitir múltiples contratos
+    const finalDocId = projectId === "general" ? docId : `${docId}_${projectId}`;
+    const docRef = doc(firestore, `clients/${selectedClient.id}/documents`, finalDocId);
+    
     try {
       await setDocumentNonBlocking(docRef, {
-        id: docId,
+        id: finalDocId,
+        typeId: docId,
+        projectId: projectId,
         status: 'CARGADO',
         uploadDate: new Date().toISOString(),
         fileUrl: 'https://placehold.co/400x600?text=Doc+Fiscal'
@@ -122,8 +139,8 @@ export default function ClientsPage() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Administración de Clientes</h1>
-          <p className="text-muted-foreground">Gestión de cartera, documentación legal y cuentas corrientes.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Gestión de Clientes</h1>
+          <p className="text-muted-foreground">Cartera de clientes, legajos fiscales por obra y conciliación de saldos.</p>
         </div>
         
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -176,19 +193,19 @@ export default function ClientsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="bg-primary/5 border-primary/20">
+        <Card className="bg-primary/5 border-primary/20 shadow-none">
           <CardHeader className="pb-2">
             <CardDescription className="text-primary font-bold uppercase text-[10px]">Deuda Total Cartera</CardDescription>
             <CardTitle className="text-2xl">${clients?.reduce((acc, c) => acc + (c.currentBalance || 0), 0).toLocaleString()}</CardTitle>
           </CardHeader>
         </Card>
-        <Card className="bg-orange-50 border-orange-200">
+        <Card className="bg-orange-50 border-orange-200 shadow-none">
           <CardHeader className="pb-2">
-            <CardDescription className="text-orange-600 font-bold uppercase text-[10px]">Facturación Pendiente</CardDescription>
+            <CardDescription className="text-orange-600 font-bold uppercase text-[10px]">Documentación Pendiente</CardDescription>
             <CardTitle className="text-2xl text-orange-700">---</CardTitle>
           </CardHeader>
         </Card>
-        <Card className="bg-accent/5 border-accent/20">
+        <Card className="bg-accent/5 border-accent/20 shadow-none">
           <CardHeader className="pb-2">
             <CardDescription className="text-accent font-bold uppercase text-[10px]">Cobranza del Mes</CardDescription>
             <CardTitle className="text-2xl text-accent">94.2%</CardTitle>
@@ -256,17 +273,11 @@ export default function ClientsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" title="Cuenta Corriente" onClick={() => {
+                      <Button variant="ghost" size="sm" className="gap-2 text-primary font-bold hover:bg-primary/5" onClick={() => {
                         setSelectedClient(client);
                         setIsSheetOpen(true);
                       }}>
-                        <Wallet className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" title="Ver Legajo" onClick={() => {
-                        setSelectedClient(client);
-                        setIsSheetOpen(true);
-                      }}>
-                        <ArrowUpRight className="w-4 h-4" />
+                        Gestionar <ArrowUpRight className="w-4 h-4" />
                       </Button>
                     </div>
                   </TableCell>
@@ -311,20 +322,20 @@ export default function ClientsPage() {
                 </Card>
                 <Card className="bg-accent/10 border-none shadow-none">
                   <CardContent className="p-4">
-                    <p className="text-[10px] uppercase font-bold text-accent">Último Pago</p>
+                    <p className="text-[10px] uppercase font-bold text-accent">Cobranza del Mes</p>
                     <p className="text-xl font-bold text-accent">---</p>
                   </CardContent>
                 </Card>
               </div>
 
               <div className="space-y-3">
-                <h3 className="text-sm font-bold uppercase tracking-tight text-primary">Movimientos Recientes</h3>
+                <h3 className="text-sm font-bold uppercase tracking-tight text-primary">Historial de Movimientos</h3>
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
                       <TableHead className="h-8 text-[10px]">Fecha</TableHead>
-                      <TableHead className="h-8 text-[10px]">Tipo / Ref</TableHead>
-                      <TableHead className="h-8 text-[10px]">Metodo</TableHead>
+                      <TableHead className="h-8 text-[10px]">Tipo / Referencia</TableHead>
+                      <TableHead className="h-8 text-[10px]">Medio</TableHead>
                       <TableHead className="h-8 text-right text-[10px]">Monto</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -359,38 +370,83 @@ export default function ClientsPage() {
               </div>
             </TabsContent>
 
-            <TabsContent value="docs" className="space-y-4">
-              <h3 className="text-sm font-bold uppercase tracking-tight text-primary">Documentación Respaldatoria</h3>
-              <div className="grid gap-3">
-                {CLIENT_REQUIRED_DOCS.map((docReq) => {
-                  const isUploaded = currentDocs?.find(d => d.id === docReq.id);
-                  return (
-                    <div key={docReq.id} className="p-4 border rounded-lg flex items-center justify-between hover:bg-muted/5 transition-colors">
-                      <div className="flex items-center gap-3">
-                        {isUploaded ? (
-                          <CheckCircle2 className="w-5 h-5 text-accent" />
-                        ) : (
-                          <AlertCircle className="w-5 h-5 text-orange-400" />
-                        )}
+            <TabsContent value="docs" className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold uppercase tracking-tight text-primary">Documentación del Cliente</h3>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-[10px] font-bold text-muted-foreground">VER POR:</Label>
+                    <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                      <SelectTrigger className="h-8 w-[200px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="general">Legajo Institucional</SelectItem>
+                        {clientProjects?.map(p => (
+                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid gap-3">
+                  {selectedProjectId === "general" ? (
+                    <>
+                      <p className="text-[10px] font-black text-muted-foreground border-b pb-1 uppercase tracking-widest">Documentos Fiscales Base</p>
+                      {CLIENT_GENERAL_DOCS.map((docReq) => {
+                        const isUploaded = currentDocs?.find(d => d.typeId === docReq.id && d.projectId === "general");
+                        return (
+                          <div key={docReq.id} className="p-4 border rounded-lg flex items-center justify-between hover:bg-muted/5 transition-colors">
+                            <div className="flex items-center gap-3">
+                              {isUploaded ? <CheckCircle2 className="w-5 h-5 text-accent" /> : <AlertCircle className="w-5 h-5 text-orange-400" />}
+                              <div>
+                                <p className="text-xs font-bold">{docReq.name}</p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {isUploaded ? `Cargado el ${format(new Date(isUploaded.uploadDate), 'dd/MM/yyyy')}` : 'Documento faltante'}
+                                </p>
+                              </div>
+                            </div>
+                            <Button variant={isUploaded ? "outline" : "secondary"} size="sm" className="h-8 text-[10px] gap-2" onClick={() => handleUploadDoc(docReq.id, "general")}>
+                              {isUploaded ? <FileText className="w-3 h-3" /> : <Upload className="w-3 h-3" />}
+                              {isUploaded ? "Ver" : "Cargar"}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </>
+                  ) : (
+                    <>
+                      <div className="bg-primary/5 p-3 rounded-lg border border-primary/10 flex items-center gap-3 mb-2">
+                        <Building2 className="w-5 h-5 text-primary" />
                         <div>
-                          <p className="text-xs font-bold">{docReq.name}</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {isUploaded ? `Cargado el ${format(new Date(isUploaded.uploadDate), 'dd/MM/yyyy')}` : 'Documento faltante'}
-                          </p>
+                          <p className="text-xs font-bold text-primary">Obra: {clientProjects?.find(p => p.id === selectedProjectId)?.name}</p>
+                          <p className="text-[10px] text-muted-foreground">Legajo Técnico y Contractual del Proyecto</p>
                         </div>
                       </div>
-                      <Button 
-                        variant={isUploaded ? "outline" : "secondary"} 
-                        size="sm" 
-                        className="h-8 text-[10px] gap-2"
-                        onClick={() => handleUploadDoc(docReq.id)}
-                      >
-                        {isUploaded ? <FileText className="w-3 h-3" /> : <Upload className="w-3 h-3" />}
-                        {isUploaded ? "Ver Archivo" : "Cargar"}
-                      </Button>
-                    </div>
-                  );
-                })}
+                      {CLIENT_PROJECT_DOCS.map((docReq) => {
+                        const isUploaded = currentDocs?.find(d => d.typeId === docReq.id && d.projectId === selectedProjectId);
+                        return (
+                          <div key={docReq.id} className="p-4 border rounded-lg flex items-center justify-between hover:bg-muted/5 transition-colors">
+                            <div className="flex items-center gap-3">
+                              {isUploaded ? <CheckCircle2 className="w-5 h-5 text-accent" /> : <AlertCircle className="w-5 h-5 text-orange-400" />}
+                              <div>
+                                <p className="text-xs font-bold">{docReq.name}</p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {isUploaded ? `Cargado el ${format(new Date(isUploaded.uploadDate), 'dd/MM/yyyy')}` : 'Requerido para la obra'}
+                                </p>
+                              </div>
+                            </div>
+                            <Button variant={isUploaded ? "outline" : "secondary"} size="sm" className="h-8 text-[10px] gap-2" onClick={() => handleUploadDoc(docReq.id, selectedProjectId)}>
+                              {isUploaded ? <FileText className="w-3 h-3" /> : <Upload className="w-3 h-3" />}
+                              {isUploaded ? "Ver" : "Cargar"}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
               </div>
             </TabsContent>
           </Tabs>
@@ -401,7 +457,7 @@ export default function ClientsPage() {
                 <Banknote className="w-4 h-4" /> Registrar Cobranza
               </Button>
               <Button variant="ghost" className="w-full text-xs text-muted-foreground">
-                <MessageSquare className="w-3 h-3 mr-2" /> Contactar Administración Cliente
+                <MessageSquare className="w-3 h-3 mr-2" /> Contactar Administración del Cliente
               </Button>
             </div>
           </SheetFooter>
