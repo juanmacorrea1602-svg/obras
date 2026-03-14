@@ -751,7 +751,7 @@ export default function ClientsPage() {
                           <TableCell className="text-[10px] text-right font-mono">${inv.remainingAmount.toLocaleString()}</TableCell>
                         </TableRow>
                       ))}
-                      {transactions?.filter(t => (t.type === 'FACTURA' || t.type === 'CONTRATO') && t.remainingAmount > 0).length === 0 && (
+                      {(!transactions || transactions.filter(t => (t.type === 'FACTURA' || t.type === 'CONTRATO') && t.remainingAmount > 0).length === 0) && (
                         <TableRow><TableCell colSpan={2} className="text-center py-4 text-[10px] italic text-muted-foreground">Sin facturas pendientes</TableCell></TableRow>
                       )}
                     </TableBody>
@@ -793,7 +793,7 @@ export default function ClientsPage() {
                           </TableCell>
                         </TableRow>
                       ))}
-                      {transactions?.filter(t => t.type === 'PAGO' && t.remainingAmount > 0).length === 0 && (
+                      {(!transactions || transactions.filter(t => t.type === 'PAGO' && t.remainingAmount > 0).length === 0) && (
                         <TableRow><TableCell colSpan={3} className="text-center py-4 text-[10px] italic text-muted-foreground">Sin cobros pendientes de aplicación</TableCell></TableRow>
                       )}
                     </TableBody>
