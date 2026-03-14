@@ -9,11 +9,12 @@ import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@
 import { Badge } from '@/components/ui/badge';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
-import { Truck, Search, Plus, Filter, Calendar, Bell, DollarSign } from 'lucide-react';
+import { Truck, Search, Plus, Filter, Bell, Loader2 } from 'lucide-react';
 
 export default function SuppliersPage() {
   const { firestore } = useFirebase();
   const [mounted, setMounted] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     setMounted(true);
@@ -27,6 +28,11 @@ export default function SuppliersPage() {
   const { data: suppliers, isLoading } = useCollection(suppliersQuery);
 
   if (!mounted) return null;
+
+  const filteredSuppliers = suppliers?.filter(s => 
+    s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    s.cuit?.includes(searchTerm)
+  );
 
   return (
     <div className="space-y-6">
@@ -79,7 +85,12 @@ export default function SuppliersPage() {
             <div className="flex items-center gap-2">
               <div className="relative w-64">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar proveedor..." className="pl-8" />
+                <Input 
+                  placeholder="Buscar proveedor..." 
+                  className="pl-8" 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
               </div>
               <Button variant="outline" size="icon"><Filter className="w-4 h-4" /></Button>
             </div>
@@ -97,11 +108,17 @@ export default function SuppliersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {suppliers?.map((supplier) => (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" />
+                  </TableCell>
+                </TableRow>
+              ) : filteredSuppliers?.map((supplier) => (
                 <TableRow key={supplier.id}>
                   <TableCell>
                     <div className="font-medium">{supplier.name}</div>
-                    <div className="text-[10px] text-muted-foreground">Mar del Plata, PBA</div>
+                    <div className="text-[10px] text-muted-foreground">Localidad / Referencia</div>
                   </TableCell>
                   <TableCell className="font-mono text-xs">{supplier.cuit}</TableCell>
                   <TableCell>
@@ -115,7 +132,7 @@ export default function SuppliersPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {(!suppliers || suppliers.length === 0) && !isLoading && (
+              {(!filteredSuppliers || filteredSuppliers.length === 0) && !isLoading && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-12 text-muted-foreground italic">
                     <Truck className="w-12 h-12 mx-auto mb-3 opacity-20" />

@@ -9,8 +9,7 @@ import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@
 import { Badge } from '@/components/ui/badge';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
-import { Users, Search, Plus, Filter, ArrowUpRight, MessageSquare, Wallet } from 'lucide-react';
-import { format } from 'date-fns';
+import { Users, Search, Plus, Filter, ArrowUpRight, MessageSquare, Wallet, Loader2 } from 'lucide-react';
 
 export default function ClientsPage() {
   const { firestore } = useFirebase();
@@ -29,6 +28,11 @@ export default function ClientsPage() {
   const { data: clients, isLoading } = useCollection(clientsQuery);
 
   if (!mounted) return null;
+
+  const filteredClients = clients?.filter(c => 
+    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    c.cuit?.includes(searchTerm)
+  );
 
   return (
     <div className="space-y-6">
@@ -93,7 +97,13 @@ export default function ClientsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {clients?.map((client) => (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" />
+                  </TableCell>
+                </TableRow>
+              ) : filteredClients?.map((client) => (
                 <TableRow key={client.id}>
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -124,7 +134,7 @@ export default function ClientsPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {(!clients || clients.length === 0) && !isLoading && (
+              {(!filteredClients || filteredClients.length === 0) && !isLoading && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-12 text-muted-foreground italic">
                     <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
