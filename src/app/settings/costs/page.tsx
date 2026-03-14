@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect } from 'react';
@@ -6,10 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { useFirebase, useDoc, setDocumentNonBlocking } from '@/firebase';
+import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking } from '@/firebase';
 import { doc } from 'firebase/firestore';
-import { Percent, Wallet, HardHat, ShieldAlert, Loader2, Save, Calculator } from 'lucide-react';
+import { HardHat, ShieldAlert, Loader2, Save, Calculator } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function GlobalCostsPage() {
@@ -21,7 +19,11 @@ export default function GlobalCostsPage() {
     setMounted(true);
   }, []);
 
-  const configRef = user && firestore ? doc(firestore, `user_profiles/${user.uid}/config/global`) : null;
+  const configRef = useMemoFirebase(() => {
+    if (!user || !firestore) return null;
+    return doc(firestore, `user_profiles/${user.uid}/config/global`);
+  }, [user, firestore]);
+
   const { data: config, isLoading } = useDoc(configRef);
 
   if (!mounted) return null;
@@ -49,16 +51,13 @@ export default function GlobalCostsPage() {
     toast({ title: "Configuración Guardada", description: "Los cálculos de presupuesto usarán estos nuevos valores." });
   };
 
-  // Cálculo del multiplicador en tiempo real
   const calculateMultiplier = (vals: any) => {
-    if (!vals) return 1.75; // Valor promedio por defecto
+    if (!vals) return 1.75;
     const attendance = (vals.attendanceBonus || 0) / 100;
     const social = (vals.socialCharges || 0) / 100;
     const cese = (vals.fondoCeseL1 || 0) / 100;
     const art = (vals.artPercentage || 0) / 100;
     const inactivity = (vals.inactivityFactor || 0) / 100;
-    
-    // Simplificación: (1 + Asistencia) * (1 + Cargas + Cese + ART + Inactividad)
     return (1 + attendance) * (1 + social + cese + art + inactivity);
   };
 
@@ -109,7 +108,6 @@ export default function GlobalCostsPage() {
 
       <form onSubmit={handleSave} className="grid gap-6">
         <div className="grid md:grid-cols-2 gap-6">
-          {/* BLOQUE 1: MANO DE OBRA */}
           <Card className="shadow-sm">
             <CardHeader className="bg-muted/30">
               <div className="flex items-center gap-2">
@@ -156,7 +154,6 @@ export default function GlobalCostsPage() {
             </CardContent>
           </Card>
 
-          {/* BLOQUE 2: INDIRECTOS Y CONTINGENCIAS */}
           <Card className="shadow-sm">
             <CardHeader className="bg-muted/30">
               <div className="flex items-center gap-2">

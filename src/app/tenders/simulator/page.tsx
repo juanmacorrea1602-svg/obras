@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect } from 'react';
@@ -7,11 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { useFirebase, useDoc } from '@/firebase';
+import { Separator } from '@/components/ui/separator';
+import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
-import { Calculator, TrendingUp, Wallet, HardHat, Package, BarChart3, Loader2 } from 'lucide-react';
+import { Calculator, Loader2 } from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
-import { Pie, PieChart, Cell, ResponsiveContainer, Legend } from 'recharts';
+import { Pie, PieChart, Cell, Legend } from 'recharts';
 
 const chartConfig = {
   ManoObra: { label: "Mano de Obra", color: "hsl(var(--primary))" },
@@ -24,7 +24,6 @@ export default function TenderSimulatorPage() {
   const { user, firestore } = useFirebase();
   const [mounted, setMounted] = useState(false);
   
-  // Simulation Inputs
   const [sqm, setSqm] = useState(100);
   const [laborHoursPerSqm, setLaborHoursPerSqm] = useState(40);
   const [materialsPerSqm, setMaterialsPerSqm] = useState(450000);
@@ -34,12 +33,15 @@ export default function TenderSimulatorPage() {
     setMounted(true);
   }, []);
 
-  const configRef = user && firestore ? doc(firestore, `user_profiles/${user.uid}/config/global`) : null;
+  const configRef = useMemoFirebase(() => {
+    if (!user || !firestore) return null;
+    return doc(firestore, `user_profiles/${user.uid}/config/global`);
+  }, [user, firestore]);
+
   const { data: config, isLoading } = useDoc(configRef);
 
   if (!mounted) return null;
 
-  // CÁLCULOS TÉCNICOS
   const calculateCosts = () => {
     const basic = config?.uocraBasic || 5000;
     const attendance = (config?.attendanceBonus || 20) / 100;
@@ -51,7 +53,6 @@ export default function TenderSimulatorPage() {
     const financial = (config?.financialTax || 2) / 100;
     const contingency = (config?.contingencyReserve || 5) / 100;
 
-    // Costo Real Hora
     const multiplier = (1 + attendance) * (1 + social + cese + art + inactivity);
     const realHourlyCost = basic * multiplier;
 
@@ -93,7 +94,6 @@ export default function TenderSimulatorPage() {
       </div>
 
       <div className="grid lg:grid-cols-12 gap-8">
-        {/* PANEL DE INPUTS */}
         <div className="lg:col-span-4 space-y-6">
           <Card>
             <CardHeader className="bg-muted/30">
@@ -138,7 +138,7 @@ export default function TenderSimulatorPage() {
                 <span className="text-xs font-bold uppercase">Base de Cálculo Aplicada</span>
               </div>
               <ul className="text-[10px] space-y-1 text-muted-foreground uppercase font-medium">
-                <li>Básico: ${config?.uocraBasic || 0} / Multiplicador: x{((1 + ((config?.attendanceBonus || 20) / 100)) * (1 + ((config?.socialCharges || 24) / 100) + ((config?.fondoCeseL1 || 12) / 100) + ((config?.artPercentage || 4) / 100) + ((config?.inactivityFactor || 15) / 100))).toFixed(2)}</li>
+                <li>Básico: ${config?.uocraBasic || 0}</li>
                 <li>Fondo Cese: {config?.fondoCeseL1 || 12}%</li>
                 <li>Contingencia: {config?.contingencyReserve || 5}%</li>
               </ul>
@@ -146,7 +146,6 @@ export default function TenderSimulatorPage() {
           </Card>
         </div>
 
-        {/* PANEL DE RESULTADOS */}
         <div className="lg:col-span-8 space-y-6">
           <div className="grid sm:grid-cols-3 gap-4">
             <Card className="bg-muted/50">
@@ -173,7 +172,7 @@ export default function TenderSimulatorPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Composición del Precio</CardTitle>
-                <CardDescription>Desglose por rubros sobre el valor de oferta</CardDescription>
+                <CardDescription>Desglose por rubros</CardDescription>
               </CardHeader>
               <CardContent className="h-[300px]">
                 <ChartContainer config={chartConfig} className="w-full h-full">
@@ -201,30 +200,23 @@ export default function TenderSimulatorPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Análisis de Sensibilidad</CardTitle>
-                <CardDescription>Ratios por unidad de obra (m²)</CardDescription>
+                <CardDescription>Ratios por m²</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Costo Mano de Obra / m²:</span>
+                    <span className="text-muted-foreground">Costo MO / m²:</span>
                     <span className="font-bold">${(results.totalLabor / sqm).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Costo Materiales / m²:</span>
                     <span className="font-bold">${(results.totalMaterials / sqm).toLocaleString()}</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Punto de Equilibrio m²:</span>
-                    <span className="font-bold">${(results.costTechnical / sqm).toLocaleString()}</span>
-                  </div>
                   <Separator />
                   <div className="flex justify-between text-lg font-black text-primary">
                     <span>Precio Oferta / m²:</span>
                     <span>${(results.totalPrice / sqm).toLocaleString()}</span>
                   </div>
-                </div>
-                <div className="p-4 bg-accent/10 rounded-lg border border-accent/20">
-                  <p className="text-xs text-accent font-bold uppercase text-center">Beneficio proyectado por m²: ${(results.profit / sqm).toLocaleString()}</p>
                 </div>
               </CardContent>
             </Card>

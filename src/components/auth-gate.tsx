@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useFirebase, initiateAnonymousSignIn } from '@/firebase';
 import { Loader2 } from 'lucide-react';
 
@@ -10,14 +10,20 @@ import { Loader2 } from 'lucide-react';
  */
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, auth, isUserLoading } = useFirebase();
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (!isUserLoading && !user) {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (mounted && !isUserLoading && !user && auth) {
       initiateAnonymousSignIn(auth);
     }
-  }, [user, auth, isUserLoading]);
+  }, [user, auth, isUserLoading, mounted]);
 
-  if (isUserLoading && !user) {
+  // Durante la carga inicial o hidratación, mostramos el loader
+  if (!mounted || (isUserLoading && !user)) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">

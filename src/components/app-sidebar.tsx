@@ -1,3 +1,6 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import { FilePlus2, HardHat, ClipboardCheck, Settings2, Clock, Calculator } from 'lucide-react';
 import {
   Sidebar,
@@ -54,6 +57,28 @@ const items = [
 ];
 
 export function AppSidebar() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <Sidebar collapsible="icon">
+        <SidebarHeader className="p-4 border-b border-sidebar-border/50">
+          <div className="flex items-center gap-3">
+            <div className="bg-white rounded-lg p-2 flex items-center justify-center shadow-sm">
+              <HardHat className="text-primary w-5 h-5" />
+            </div>
+            <span className="font-bold text-xl tracking-tight text-white group-data-[collapsible=icon]:hidden">ObraControlIA</span>
+          </div>
+        </SidebarHeader>
+        <SidebarContent />
+      </Sidebar>
+    );
+  }
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4 border-b border-sidebar-border/50">

@@ -1,9 +1,8 @@
-
 "use client"
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useFirebase, useDoc, addDocumentNonBlocking } from '@/firebase';
+import { useFirebase, useDoc, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
 import { collection, doc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Save, Plus, Trash2, HardHat, Gavel, Calculator, Info, ShieldAlert, Loader2, DollarSign, Package, User, Wrench, MoreHorizontal } from 'lucide-react';
+import { Save, Plus, Trash2, HardHat, Gavel, Calculator, Info, ShieldAlert, Loader2, DollarSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type BudgetBreakdown = {
@@ -40,8 +39,12 @@ export default function NewProjectPage() {
     setMounted(true);
   }, []);
 
-  // Fetch Global Config to pre-populate costs
-  const configRef = user && firestore ? doc(firestore, `user_profiles/${user.uid}/config/global`) : null;
+  // Fetch Global Config memoized
+  const configRef = useMemoFirebase(() => {
+    if (!user || !firestore) return null;
+    return doc(firestore, `user_profiles/${user.uid}/config/global`);
+  }, [user, firestore]);
+  
   const { data: globalConfig } = useDoc(configRef);
 
   const [formData, setFormData] = useState({
@@ -154,7 +157,6 @@ export default function NewProjectPage() {
               status: 'PENDIENTE'
             });
 
-            // Crear items de presupuesto a partir del desglose
             if (stageRef) {
               for (const budget of stage.budgetBreakdown) {
                 if (budget.amount > 0) {
