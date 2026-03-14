@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { 
   FilePlus2, HardHat, ClipboardCheck, Settings2, Clock, 
   Calculator, Users, Truck, Wallet, FileBarChart, 
@@ -73,6 +74,7 @@ const navGroups = [
 ];
 
 export function AppSidebar() {
+  const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -113,25 +115,35 @@ export function AppSidebar() {
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
-                {group.items.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton 
-                      asChild 
-                      tooltip={item.title}
-                      className={cn(
-                        "transition-all duration-200",
-                        item.highlight 
-                          ? "bg-accent text-accent-foreground font-bold hover:bg-accent/90 hover:text-accent-foreground shadow-sm mb-2 py-5 ring-1 ring-white/10" 
-                          : "text-sidebar-foreground/80 hover:bg-white/10 hover:text-white h-9"
-                      )}
-                    >
-                      <Link href={item.url}>
-                        <item.icon className={cn("w-4 h-4", item.highlight ? "text-accent-foreground" : "text-sidebar-foreground/60")} />
-                        <span className="text-xs">{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                {group.items.map((item) => {
+                  const isActive = pathname === item.url || (item.url !== '/' && pathname.startsWith(item.url));
+                  
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton 
+                        asChild 
+                        tooltip={item.title}
+                        isActive={isActive}
+                        className={cn(
+                          "transition-all duration-200",
+                          item.highlight 
+                            ? "bg-accent text-accent-foreground font-bold hover:bg-accent/90 hover:text-accent-foreground shadow-sm mb-2 py-5 ring-1 ring-white/10" 
+                            : isActive 
+                              ? "bg-white/20 text-white font-semibold h-9" 
+                              : "text-sidebar-foreground/80 hover:bg-white/10 hover:text-white h-9"
+                        )}
+                      >
+                        <Link href={item.url}>
+                          <item.icon className={cn(
+                            "w-4 h-4", 
+                            item.highlight ? "text-accent-foreground" : isActive ? "text-white" : "text-sidebar-foreground/60"
+                          )} />
+                          <span className="text-xs">{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
