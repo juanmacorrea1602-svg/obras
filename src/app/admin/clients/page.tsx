@@ -52,6 +52,7 @@ export default function ClientsPage() {
   const [isTxDialogOpen, setIsTxDialogOpen] = useState(false);
   const [txType, setTxType] = useState<"FACTURA" | "PAGO">("FACTURA");
   const [isConciliateOpen, setIsConciliateOpen] = useState(false);
+  const [allocationType, setAllocationType] = useState<string>("a_cuenta");
 
   useEffect(() => {
     setMounted(true);
@@ -123,15 +124,37 @@ export default function ClientsPage() {
     const formData = new FormData(e.currentTarget);
     const amount = Number(formData.get('amount'));
     const projectId = formData.get('projectId') as string;
+    const targetInvoiceId = formData.get('targetInvoiceId') as string;
     
+    let remainingAmount = amount;
+    let status = 'PENDIENTE';
+
+    // Si es un cobro directo a factura
+    if (txType === 'PAGO' && allocationType === 'directo' && targetInvoiceId) {
+      const invoice = transactions?.find(t => t.id === targetInvoiceId);
+      if (invoice) {
+        const amountToApply = Math.min(amount, invoice.remainingAmount);
+        remainingAmount = amount - amountToApply;
+        status = remainingAmount <= 0 ? 'CONCILIADO' : 'PARCIAL';
+
+        // Actualizar la factura destino
+        const invoiceRef = doc(firestore, `clients/${selectedClient.id}/transactions`, targetInvoiceId);
+        const newInvoiceRemaining = invoice.remainingAmount - amountToApply;
+        updateDocumentNonBlocking(invoiceRef, {
+          remainingAmount: newInvoiceRemaining,
+          status: newInvoiceRemaining <= 0 ? 'CONCILIADO' : 'PARCIAL'
+        });
+      }
+    }
+
     const newTx = {
       type: txType,
       date: new Date().toISOString(),
       amount: amount,
-      remainingAmount: amount, // Saldo inicial es el total
+      remainingAmount: remainingAmount,
       reference: formData.get('reference') as string,
-      method: formData.get('method') as string,
-      status: 'PENDIENTE',
+      method: (formData.get('method') as string) || 'N/A',
+      status: status,
       projectId: projectId || 'general',
       creationDate: new Date().toISOString()
     };
@@ -145,7 +168,12 @@ export default function ClientsPage() {
         currentBalance: increment(balanceChange)
       });
 
-      toast({ title: "Movimiento Registrado", description: txType === 'PAGO' ? "Cobro ingresado a cuenta." : "Factura cargada a la cuenta corriente." });
+      toast({ 
+        title: "Movimiento Registrado", 
+        description: txType === 'PAGO' 
+          ? (allocationType === 'directo' ? "Cobro aplicado correctamente." : "Cobro ingresado a cuenta.") 
+          : "Factura cargada a la cuenta corriente." 
+      });
       setIsTxDialogOpen(false);
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "No se pudo procesar la transacción." });
@@ -160,7 +188,6 @@ export default function ClientsPage() {
     const invoiceRef = doc(firestore, `clients/${selectedClient.id}/transactions`, invoiceId);
     const paymentRef = doc(firestore, `clients/${selectedClient.id}/transactions`, paymentId);
 
-    // Buscar los datos actuales para determinar nuevo estado
     const invoice = transactions?.find(t => t.id === invoiceId);
     const payment = transactions?.find(t => t.id === paymentId);
 
@@ -299,8 +326,7 @@ export default function ClientsPage() {
             <CardDescription className="text-accent font-bold uppercase text-[10px]">Cobros a Imputar</CardDescription>
             <CardTitle className="text-2xl text-accent">---</CardTitle>
           </CardHeader>
-        </Card>
-      </div>
+        </div>
 
       <Card>
         <CardHeader>
@@ -423,8 +449,12 @@ export default function ClientsPage() {
                 <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => { setTxType("FACTURA"); setIsTxDialogOpen(true); }}>
                   <Receipt className="w-3 h-3" /> Cargar Factura
                 </Button>
-                <Button className="gap-2 text-xs bg-accent hover:bg-accent/90" size="sm" onClick={() => { setTxType("PAGO"); setIsTxDialogOpen(true); }}>
-                  <HandCoins className="w-3 h-3" /> Registrar Cobro (A Cuenta)
+                <Button className="gap-2 text-xs bg-accent hover:bg-accent/90" size="sm" onClick={() => { 
+                  setTxType("PAGO"); 
+                  setAllocationType("a_cuenta");
+                  setIsTxDialogOpen(true); 
+                }}>
+                  <HandCoins className="w-3 h-3" /> Registrar Cobro
                 </Button>
               </div>
 
@@ -638,17 +668,49 @@ export default function ClientsPage() {
                 <Input name="reference" placeholder="Ej: Factura A 0001-00001234" required />
               </div>
               {txType === 'PAGO' && (
-                <div className="grid gap-2">
-                  <Label>Medio de Cobro</Label>
-                  <Select name="method" defaultValue="Transferencia">
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Transferencia">Transferencia Bancaria</SelectItem>
-                      <SelectItem value="E-Cheq">E-Cheq (Cheque Electrónico)</SelectItem>
-                      <SelectItem value="Efectivo">Efectivo (Caja Chica)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <>
+                  <div className="grid gap-2">
+                    <Label>Destino del Cobro</Label>
+                    <Select name="allocationType" defaultValue="a_cuenta" onValueChange={setAllocationType}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="a_cuenta">A Cuenta (Sin imputar)</SelectItem>
+                        <SelectItem value="directo">Aplicar a Factura Pendiente</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {allocationType === 'directo' && (
+                    <div className="grid gap-2 animate-in fade-in slide-in-from-top-1">
+                      <Label>Seleccionar Factura a Cancelar</Label>
+                      <Select name="targetInvoiceId" required={allocationType === 'directo'}>
+                        <SelectTrigger><SelectValue placeholder="Elija factura con saldo..." /></SelectTrigger>
+                        <SelectContent>
+                          {transactions?.filter(t => (t.type === 'FACTURA' || t.type === 'CONTRATO') && t.remainingAmount > 0).map(inv => (
+                            <SelectItem key={inv.id} value={inv.id}>
+                              {inv.reference} (Saldo: ${inv.remainingAmount.toLocaleString()})
+                            </SelectItem>
+                          ))}
+                          {(!transactions || transactions.filter(t => (t.type === 'FACTURA' || t.type === 'CONTRATO') && t.remainingAmount > 0).length === 0) && (
+                            <SelectItem value="none" disabled>Sin facturas pendientes</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="grid gap-2">
+                    <Label>Medio de Cobro</Label>
+                    <Select name="method" defaultValue="Transferencia">
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Transferencia">Transferencia Bancaria</SelectItem>
+                        <SelectItem value="E-Cheq">E-Cheq (Cheque Electrónico)</SelectItem>
+                        <SelectItem value="Efectivo">Efectivo (Caja Chica)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
               )}
             </div>
             <DialogFooter>
