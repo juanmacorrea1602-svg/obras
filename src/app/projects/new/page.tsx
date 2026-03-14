@@ -3,8 +3,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useFirebase, useDoc, useCollection, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
-import { collection, doc, query, orderBy } from 'firebase/firestore';
+import { useFirebase, useDoc, useCollection, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
+import { collection, doc, query, orderBy, increment } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -165,10 +165,11 @@ export default function NewProjectPage() {
 
     setLoading(true);
     try {
+      const budgetAmount = Number(formData.totalBudgetAmount);
       const projectData = {
         ...formData,
         surfaceSqm: Number(formData.surfaceSqm),
-        totalBudgetAmount: Number(formData.totalBudgetAmount),
+        totalBudgetAmount: budgetAmount,
         marginPercentage: Number(formData.marginPercentage),
         costConfig: costIncidencias,
         responsibleAnalystId: user.uid,
@@ -181,6 +182,25 @@ export default function NewProjectPage() {
       const projectRef = await addDocumentNonBlocking(collection(firestore, 'projects'), projectData);
       
       if (projectRef) {
+        // 1. Aplicar contrato automáticamente al cliente
+        const clientTxRef = collection(firestore, `clients/${formData.clientId}/transactions`);
+        await addDocumentNonBlocking(clientTxRef, {
+          type: 'CONTRATO',
+          date: new Date().toISOString(),
+          amount: budgetAmount,
+          remainingAmount: budgetAmount,
+          reference: `Contrato Obra: ${formData.name}`,
+          status: 'PENDIENTE',
+          projectId: projectRef.id,
+          creationDate: new Date().toISOString()
+        });
+
+        const clientDocRef = doc(firestore, 'clients', formData.clientId);
+        await updateDocumentNonBlocking(clientDocRef, {
+          currentBalance: increment(budgetAmount)
+        });
+
+        // 2. Crear etapas e ítems
         for (const stage of stages) {
           if (stage.name) {
             const stageRef = await addDocumentNonBlocking(collection(firestore, `projects/${projectRef.id}/stages`), {
@@ -219,7 +239,7 @@ export default function NewProjectPage() {
         }
       }
 
-      toast({ title: 'Ingeniería Completada', description: 'La obra ha sido enviada a auditoría con su línea base financiera.' });
+      toast({ title: 'Ingeniería Completada', description: 'La obra ha sido enviada a auditoría y el contrato aplicado al saldo del cliente.' });
       router.push('/projects/pending');
     } catch (error) {
       console.error(error);
@@ -557,7 +577,7 @@ export default function NewProjectPage() {
               <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg flex gap-4">
                 <AlertTriangle className="w-6 h-6 text-orange-600 shrink-0" />
                 <div className="text-xs text-orange-800 leading-tight">
-                  <p className="font-bold mb-1 uppercase">Validación de Rentabilidad</p>
+                  <p className="font-bold mb-1 uppercase tracking-tighter">Validación de Rentabilidad</p>
                   Su precio objetivo de venta (${targetBudget.toLocaleString()}) está {targetBudget < breakEvenPoint ? "POR DEBAJO" : "POR ENCIMA"} de su punto de equilibrio financiero (${breakEvenPoint.toLocaleString()}). {targetBudget < breakEvenPoint && "Esta obra generará pérdidas operativas con la configuración actual."}
                 </div>
               </div>

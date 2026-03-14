@@ -3,8 +3,8 @@
 
 import { useState, use, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useFirebase, useDoc, useCollection, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
-import { doc, collection } from 'firebase/firestore';
+import { useFirebase, useDoc, useCollection, useMemoFirebase, updateDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
+import { doc, collection, increment } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,19 +39,45 @@ export default function TenderDetailPage({ params }: { params: Promise<{ tenderI
 
   if (!mounted) return null;
 
+  const totalMarketCost = budgetItems?.reduce((acc, item) => acc + (item.budgetedTotalAmount || 0), 0) || 0;
+  const currentMargin = tender?.marginPercentage || 0;
+  const totalPriceOffer = totalMarketCost * (1 + currentMargin / 100);
+
   const handlePromoteToProject = async () => {
-    if (!tenderRef) return;
+    if (!tenderRef || !tender || !firestore) return;
     setIsPromoting(true);
     
     try {
+      // 1. Actualizar estado del proyecto
       await updateDocumentNonBlocking(tenderRef, {
         currentStatus: 'OK', 
         adjudicationDate: new Date().toISOString(),
+        totalBudgetAmount: totalPriceOffer // Fijar el presupuesto de venta como base
       });
+
+      // 2. Aplicar contrato automáticamente al cliente vinculado
+      if (tender.clientId) {
+        const clientTxRef = collection(firestore, `clients/${tender.clientId}/transactions`);
+        await addDocumentNonBlocking(clientTxRef, {
+          type: 'CONTRATO',
+          date: new Date().toISOString(),
+          amount: totalPriceOffer,
+          remainingAmount: totalPriceOffer,
+          reference: `Adjudicación Licitación: ${tender.name}`,
+          status: 'PENDIENTE',
+          projectId: tenderId,
+          creationDate: new Date().toISOString()
+        });
+
+        const clientDocRef = doc(firestore, 'clients', tender.clientId);
+        await updateDocumentNonBlocking(clientDocRef, {
+          currentBalance: increment(totalPriceOffer)
+        });
+      }
       
       toast({ 
         title: "¡Obra Adjudicada!", 
-        description: "La licitación ha pasado a fase de ejecución. Ahora puedes registrar gastos y certificar avances.",
+        description: "La licitación ha pasado a fase de ejecución y el contrato se aplicó al saldo del cliente.",
       });
       
       router.push(`/projects/${tenderId}`);
@@ -82,10 +108,6 @@ export default function TenderDetailPage({ params }: { params: Promise<{ tenderI
   }
 
   if (!tender) return <div className="p-8 text-center">Licitación no encontrada</div>;
-
-  const totalMarketCost = budgetItems?.reduce((acc, item) => acc + (item.budgetedTotalAmount || 0), 0) || 0;
-  const currentMargin = tender.marginPercentage || 0;
-  const totalPriceOffer = totalMarketCost * (1 + currentMargin / 100);
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -122,7 +144,7 @@ export default function TenderDetailPage({ params }: { params: Promise<{ tenderI
             <CardDescription className="text-white/70 uppercase text-[10px] font-bold">Precio Final de Oferta</CardDescription>
             <CardTitle className="text-2xl">${totalPriceOffer.toLocaleString()}</CardTitle>
           </CardHeader>
-        </Card>
+        </div>
       </div>
 
       <Tabs defaultValue={defaultTab} className="w-full">

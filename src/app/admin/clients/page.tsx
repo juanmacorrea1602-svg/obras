@@ -50,7 +50,7 @@ export default function ClientsPage() {
 
   // Estados de Transacción
   const [isTxDialogOpen, setIsTxDialogOpen] = useState(false);
-  const [txType, setTxType] = useState<"FACTURA" | "PAGO" | "CONTRATO">("FACTURA");
+  const [txType, setTxType] = useState<"FACTURA" | "PAGO">("FACTURA");
   const [isConciliateOpen, setIsConciliateOpen] = useState(false);
 
   useEffect(() => {
@@ -140,7 +140,7 @@ export default function ClientsPage() {
       // 1. Agregar transacción
       await addDocumentNonBlocking(collection(firestore, `clients/${selectedClient.id}/transactions`), newTx);
       
-      // 2. Actualizar saldo del cliente (Deuda sube con factura/contrato, baja con pago)
+      // 2. Actualizar saldo del cliente (Deuda sube con factura, baja con pago)
       const balanceChange = (txType === 'PAGO') ? -amount : amount;
       const clientRef = doc(firestore, 'clients', selectedClient.id);
       await updateDocumentNonBlocking(clientRef, {
@@ -392,9 +392,6 @@ export default function ClientsPage() {
                   </CardContent>
                 </Card>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => { setTxType("CONTRATO"); setIsTxDialogOpen(true); }}>
-                    <Target className="w-3 h-3" /> Aplicar Contrato
-                  </Button>
                   <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => { setTxType("FACTURA"); setIsTxDialogOpen(true); }}>
                     <Receipt className="w-3 h-3" /> Facturar
                   </Button>
