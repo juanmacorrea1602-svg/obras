@@ -27,6 +27,9 @@ service cloud.firestore {
 
     match /hr_files/{fileId} {
       allow read, write: if isSignedIn();
+      match /{allSubcollections=**} {
+        allow read, write: if isSignedIn();
+      }
     }
 
     match /user_profiles/{userId} {
