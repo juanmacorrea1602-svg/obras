@@ -21,6 +21,11 @@ const items = [
     icon: LayoutDashboard,
   },
   {
+    title: 'Proyectos y Etapas',
+    url: '/projects',
+    icon: HardHat,
+  },
+  {
     title: 'Licitaciones (Preventa)',
     url: '/tenders',
     icon: Gavel,
@@ -29,11 +34,6 @@ const items = [
     title: 'Simulador Rápido',
     url: '/tenders/simulator',
     icon: Calculator,
-  },
-  {
-    title: 'Proyectos y Etapas',
-    url: '/projects',
-    icon: HardHat,
   },
   {
     title: 'Registro de Gasto',

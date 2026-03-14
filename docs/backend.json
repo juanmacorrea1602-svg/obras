@@ -5,21 +5,40 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Project",
       "type": "object",
-      "description": "Represents a construction project, the highest level of organization for tracking costs and progress.",
+      "description": "Represents a construction project or tender, with full financial and technical configuration.",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
         "description": { "type": "string" },
+        "type": { 
+          "type": "string", 
+          "enum": ["licitacion_privada", "licitacion_publica", "presupuesto_propio", "cliente_externo"],
+          "description": "Clasificación de la obra/entrada."
+        },
+        "workType": { "type": "string", "description": "Tipo de trabajo (Vivienda, Civil, Industrial, etc.)" },
         "startDate": { "type": "string", "format": "date-time" },
         "plannedEndDate": { "type": "string", "format": "date-time" },
         "totalBudgetAmount": { "type": "number" },
-        "currentStatus": { "type": "string", "format": "enum" },
+        "currentStatus": { 
+          "type": "string", 
+          "enum": ["PENDIENTE_APROBACION", "LICITACION", "OK", "FINALIZADO", "ALERTA"],
+          "default": "PENDIENTE_APROBACION"
+        },
         "location": { "type": "string" },
         "responsibleAnalystId": { "type": "string" },
         "marginPercentage": { "type": "number" },
-        "adjudicationDate": { "type": "string", "format": "date-time" }
+        "costConfig": {
+          "type": "object",
+          "properties": {
+            "artPercentage": { "type": "number" },
+            "socialCharges": { "type": "number" },
+            "fondoCese": { "type": "number" },
+            "inactivityFactor": { "type": "number" },
+            "contingencyReserve": { "type": "number" }
+          }
+        }
       },
-      "required": ["id", "name", "totalBudgetAmount", "currentStatus", "responsibleAnalystId"]
+      "required": ["id", "name", "type", "totalBudgetAmount", "currentStatus", "responsibleAnalystId"]
     },
     "GlobalConfig": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -27,47 +46,16 @@
       "type": "object",
       "description": "Configuración maestra de variables de costo (UOCRA, ART, Cargas Sociales, etc.)",
       "properties": {
-        "uocraBasic": { "type": "number", "description": "Básico hora Oficial" },
-        "attendanceBonus": { "type": "number", "default": 20, "description": "Asistencia Perfecta %" },
-        "socialCharges": { "type": "number", "default": 24, "description": "Cargas Sociales Empleador %" },
-        "fondoCeseL1": { "type": "number", "default": 12, "description": "Fondo Cese 1er Año %" },
-        "artPercentage": { "type": "number", "default": 4, "description": "Alícuota ART %" },
-        "inactivityFactor": { "type": "number", "default": 15, "description": "Factor Inactividad (Lluvia/Feriados) %" },
-        "materialWaste": { "type": "number", "default": 5, "description": "Desperdicio Materiales %" },
-        "financialTax": { "type": "number", "default": 2, "description": "Impuestos Déb/Créd %" },
-        "contingencyReserve": { "type": "number", "default": 5, "description": "Reserva Contingencia %" },
-        "lifeInsurance": { "type": "number", "default": 500, "description": "Seguro de Vida Obligatorio (Fijo)" }
-      }
-    },
-    "Stage": {
-      "title": "Stage",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "projectId": { "type": "string" },
-        "name": { "type": "string" },
-        "status": { "type": "string" }
-      }
-    },
-    "BudgetItem": {
-      "title": "BudgetItem",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "projectId": { "type": "string" },
-        "name": { "type": "string" },
-        "budgetedTotalAmount": { "type": "number" },
-        "currentPhysicalProgressPercentage": { "type": "number" },
-        "accumulatedActualCost": { "type": "number" }
-      }
-    },
-    "Expense": {
-      "title": "Expense",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "projectId": { "type": "string" },
-        "totalAmount": { "type": "number" }
+        "uocraBasic": { "type": "number" },
+        "attendanceBonus": { "type": "number", "default": 20 },
+        "socialCharges": { "type": "number", "default": 24 },
+        "fondoCeseL1": { "type": "number", "default": 12 },
+        "artPercentage": { "type": "number", "default": 4 },
+        "inactivityFactor": { "type": "number", "default": 15 },
+        "materialWaste": { "type": "number", "default": 5 },
+        "financialTax": { "type": "number", "default": 2 },
+        "contingencyReserve": { "type": "number", "default": 5 },
+        "lifeInsurance": { "type": "number", "default": 500 }
       }
     }
   },

@@ -7,8 +7,9 @@ import { collection, query, where } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Settings2, ExternalLink, HardHat, Loader2 } from 'lucide-react';
+import { PlusCircle, Settings2, ExternalLink, HardHat, Loader2, Clock } from 'lucide-react';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
 
 export default function ProjectsPage() {
   const { user, firestore } = useFirebase();
@@ -34,74 +35,75 @@ export default function ProjectsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Mis Obras</h1>
-          <p className="text-muted-foreground">Gestión de Cómputo, Presupuesto y Cronogramas</p>
+          <h1 className="text-3xl font-bold tracking-tight">Gestión de Proyectos</h1>
+          <p className="text-muted-foreground">Ciclo de vida completo: Licitación, Aprobación y Obra Activa.</p>
         </div>
         <Button asChild className="gap-2 bg-primary">
           <Link href="/projects/new">
-            <PlusCircle className="w-4 h-4" /> Nueva Obra
+            <PlusCircle className="w-4 h-4" /> Nueva Entrada
           </Link>
         </Button>
       </div>
 
-      {error && (
-        <Card className="border-destructive bg-destructive/5">
-          <CardContent className="p-4 text-sm text-destructive">
-            <p className="font-bold">Error de Acceso:</p>
-            <p>{error.message}</p>
-          </CardContent>
-        </Card>
-      )}
-
       {isLoading ? (
         <div className="flex flex-col items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-primary opacity-20" />
-          <p className="text-muted-foreground mt-4">Cargando proyectos...</p>
+          <p className="text-muted-foreground mt-4">Cargando ciclo de vida...</p>
         </div>
       ) : projects && projects.length > 0 ? (
         <div className="grid gap-6">
           {projects.map((project: any) => (
-            <Card key={project.id} className="shadow-sm border-border overflow-hidden">
-              <CardHeader className="bg-muted/30">
-                <div className="flex items-center justify-between">
+            <Card key={project.id} className={cn(
+              "shadow-sm border-l-4 overflow-hidden",
+              project.currentStatus === 'PENDIENTE_APROBACION' ? "border-l-orange-400" : "border-l-primary"
+            )}>
+              <CardHeader className="bg-muted/10">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
-                    <CardTitle>{project.name}</CardTitle>
-                    <CardDescription>
-                      Inicio: {project.startDate ? new Date(project.startDate).toLocaleDateString() : 'N/A'} | 
-                      Presupuesto: ${Number(project.totalBudgetAmount || 0).toLocaleString('es-AR')}
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-xl">{project.name}</CardTitle>
+                      {project.currentStatus === 'PENDIENTE_APROBACION' && (
+                        <Badge variant="secondary" className="bg-orange-100 text-orange-700 animate-pulse border-orange-200 gap-1">
+                          <Clock className="w-3 h-3" /> PENDIENTE APROBACIÓN
+                        </Badge>
+                      )}
+                    </div>
+                    <CardDescription className="mt-1">
+                      Tipo: <span className="font-bold uppercase text-[10px]">{project.type?.replace('_', ' ')}</span> | 
+                      Trabajo: <span className="font-bold">{project.workType?.replace('_', ' ')}</span>
                     </CardDescription>
                   </div>
                   <div className="flex gap-2">
                     <Button asChild variant="outline" size="sm" className="gap-2">
                       <Link href={`/projects/${project.id}`}>
-                        <Settings2 className="w-4 h-4" /> Configurar
+                        <Settings2 className="w-4 h-4" /> Gestionar
                       </Link>
                     </Button>
                     <Button asChild variant="ghost" size="sm" className="gap-2">
                       <Link href={`/projects/${project.id}`}>
-                        <ExternalLink className="w-4 h-4" /> Detalle
+                        <ExternalLink className="w-4 h-4" /> Ver Detalle
                       </Link>
                     </Button>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="p-6">
-                <div className="grid md:grid-cols-3 gap-4">
-                  <div className="p-4 border rounded-lg bg-background">
-                    <p className="text-xs font-bold text-muted-foreground uppercase">Ubicación</p>
-                    <p className="text-sm font-medium">{project.location || 'No especificada'}</p>
+                <div className="grid md:grid-cols-4 gap-4 text-sm">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Presupuesto</p>
+                    <p className="font-bold">${Number(project.totalBudgetAmount || 0).toLocaleString('es-AR')}</p>
                   </div>
-                  <div className="p-4 border rounded-lg bg-background">
-                    <p className="text-xs font-bold text-muted-foreground uppercase">Estado General</p>
-                    <Badge className="mt-1" variant={project.currentStatus === 'ALERTA' ? 'destructive' : 'default'}>
-                      {project.currentStatus || 'OK'}
-                    </Badge>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Ubicación</p>
+                    <p className="truncate">{project.location || 'MDP'}</p>
                   </div>
-                  <div className="p-4 border rounded-lg bg-background">
-                    <p className="text-xs font-bold text-muted-foreground uppercase">Entrega Estimada</p>
-                    <p className="text-sm font-medium">
-                      {project.plannedEndDate ? new Date(project.plannedEndDate).toLocaleDateString() : 'N/A'}
-                    </p>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Margen Obj.</p>
+                    <p className="font-bold text-accent">{project.marginPercentage || 0}%</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Fondo Cese</p>
+                    <p>{project.costConfig?.fondoCese || 0}%</p>
                   </div>
                 </div>
               </CardContent>
@@ -112,10 +114,10 @@ export default function ProjectsPage() {
         <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-xl bg-muted/10">
           <HardHat className="w-12 h-12 text-muted-foreground mb-4 opacity-20" />
           <p className="text-muted-foreground text-center max-w-xs">
-            Aún no tienes obras registradas. Comienza creando tu primera obra para gestionar presupuestos y avances.
+            No hay obras registradas. Inicia el flujo PMO creando una nueva entrada.
           </p>
           <Button asChild variant="outline" className="mt-4">
-            <Link href="/projects/new">Crear mi primera obra</Link>
+            <Link href="/projects/new">Nueva Entrada de Obra</Link>
           </Button>
         </div>
       )}
