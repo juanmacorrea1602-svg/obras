@@ -26,6 +26,7 @@ const REQUIRED_DOCS = {
     { id: 'cuil', name: 'Constancia de CUIL', expiry: false },
     { id: 'alta_afip', name: 'Alta Temprana AFIP', expiry: false },
     { id: 'art', name: 'Certificado de Cobertura ART', expiry: true },
+    { id: 'licencia', name: 'Licencia de Conducir', expiry: true },
   ],
   uocra: [
     { id: 'ieric', name: 'Credencial IERIC', expiry: true },
@@ -338,7 +339,9 @@ export default function PersonnelPage() {
               <div>
                 <SheetTitle className="text-xl">{selectedPerson?.fullName}</SheetTitle>
                 <SheetDescription className="flex items-center gap-2">
-                  <Badge variant="secondary">{selectedPerson?.category}</Badge>
+                  <Badge variant="secondary" asChild>
+                    <span>{selectedPerson?.category}</span>
+                  </Badge>
                   <span className="text-[10px] uppercase font-bold text-muted-foreground">CUIL: {selectedPerson?.dni}</span>
                 </SheetDescription>
               </div>
@@ -360,7 +363,9 @@ export default function PersonnelPage() {
                   </div>
                   <div>
                     <Label className="text-[10px] text-muted-foreground uppercase">Estado Laboral</Label>
-                    <Badge className="block w-fit bg-green-100 text-green-700 hover:bg-green-100 border-green-200">ACTIVO</Badge>
+                    <Badge className="block w-fit bg-green-100 text-green-700 hover:bg-green-100 border-green-200" asChild>
+                      <span>ACTIVO</span>
+                    </Badge>
                   </div>
                   <div>
                     <Label className="text-[10px] text-muted-foreground uppercase">Convenio</Label>
