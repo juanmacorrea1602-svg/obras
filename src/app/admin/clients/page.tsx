@@ -128,7 +128,7 @@ export default function ClientsPage() {
       type: txType,
       date: new Date().toISOString(),
       amount: amount,
-      remainingAmount: amount,
+      remainingAmount: amount, // Saldo inicial es el total
       reference: formData.get('reference') as string,
       method: formData.get('method') as string,
       status: 'PENDIENTE',
@@ -145,7 +145,7 @@ export default function ClientsPage() {
         currentBalance: increment(balanceChange)
       });
 
-      toast({ title: "Movimiento Registrado", description: `Se ha generado el registro de ${txType}.` });
+      toast({ title: "Movimiento Registrado", description: txType === 'PAGO' ? "Cobro ingresado a cuenta." : "Factura cargada a la cuenta corriente." });
       setIsTxDialogOpen(false);
     } catch (error) {
       toast({ variant: "destructive", title: "Error", description: "No se pudo procesar la transacción." });
@@ -160,18 +160,27 @@ export default function ClientsPage() {
     const invoiceRef = doc(firestore, `clients/${selectedClient.id}/transactions`, invoiceId);
     const paymentRef = doc(firestore, `clients/${selectedClient.id}/transactions`, paymentId);
 
+    // Buscar los datos actuales para determinar nuevo estado
+    const invoice = transactions?.find(t => t.id === invoiceId);
+    const payment = transactions?.find(t => t.id === paymentId);
+
+    if (!invoice || !payment) return;
+
+    const newInvoiceRemaining = invoice.remainingAmount - amountToApply;
+    const newPaymentRemaining = payment.remainingAmount - amountToApply;
+
     try {
       await updateDocumentNonBlocking(invoiceRef, {
-        remainingAmount: increment(-amountToApply),
-        status: 'PARCIAL'
+        remainingAmount: newInvoiceRemaining,
+        status: newInvoiceRemaining <= 0 ? 'CONCILIADO' : 'PARCIAL'
       });
 
       await updateDocumentNonBlocking(paymentRef, {
-        remainingAmount: increment(-amountToApply),
-        status: 'CONCILIADO'
+        remainingAmount: newPaymentRemaining,
+        status: newPaymentRemaining <= 0 ? 'CONCILIADO' : 'PARCIAL'
       });
 
-      toast({ title: "Conciliación Exitosa" });
+      toast({ title: "Imputación Exitosa", description: `Se aplicaron $${amountToApply.toLocaleString()} a la factura.` });
     } catch (e) {
       toast({ variant: "destructive", title: "Error al conciliar" });
     }
@@ -281,14 +290,14 @@ export default function ClientsPage() {
         </Card>
         <Card className="bg-orange-50 border-orange-200 shadow-none">
           <CardHeader className="pb-2">
-            <CardDescription className="text-orange-600 font-bold uppercase text-[10px]">Documentación Pendiente</CardDescription>
+            <CardDescription className="text-orange-600 font-bold uppercase text-[10px]">Facturas Pendientes</CardDescription>
             <CardTitle className="text-2xl text-orange-700">---</CardTitle>
           </CardHeader>
         </Card>
         <Card className="bg-accent/5 border-accent/20 shadow-none">
           <CardHeader className="pb-2">
-            <CardDescription className="text-accent font-bold uppercase text-[10px]">Cobranza del Mes</CardDescription>
-            <CardTitle className="text-2xl text-accent">94.2%</CardTitle>
+            <CardDescription className="text-accent font-bold uppercase text-[10px]">Cobros a Imputar</CardDescription>
+            <CardTitle className="text-2xl text-accent">---</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -393,38 +402,47 @@ export default function ClientsPage() {
             </TabsList>
 
             <TabsContent value="account" className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Card className="flex-1 bg-muted/30 border-none shadow-none">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Card className="bg-muted/30 border-none shadow-none">
                   <CardContent className="p-4">
-                    <p className="text-[10px] uppercase font-bold text-muted-foreground">Saldo Pendiente Real</p>
+                    <p className="text-[10px] uppercase font-bold text-muted-foreground">Saldo Deudor Total</p>
                     <p className="text-2xl font-black">${(selectedClient?.currentBalance || 0).toLocaleString()}</p>
                   </CardContent>
                 </Card>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => { setTxType("FACTURA"); setIsTxDialogOpen(true); }}>
-                    <Receipt className="w-3 h-3" /> Facturar
-                  </Button>
-                  <Button className="gap-2 text-xs bg-accent hover:bg-accent/90" size="sm" onClick={() => { setTxType("PAGO"); setIsTxDialogOpen(true); }}>
-                    <HandCoins className="w-3 h-3" /> Registrar Cobro
-                  </Button>
-                </div>
+                <Card className="bg-accent/5 border-dashed border-accent/20 shadow-none">
+                  <CardContent className="p-4">
+                    <p className="text-[10px] uppercase font-bold text-accent">Disponible a Imputar</p>
+                    <p className="text-2xl font-black text-accent">
+                      ${transactions?.filter(t => t.type === 'PAGO').reduce((acc, t) => acc + (t.remainingAmount || 0), 0).toLocaleString()}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="flex flex-wrap gap-2 justify-end">
+                <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => { setTxType("FACTURA"); setIsTxDialogOpen(true); }}>
+                  <Receipt className="w-3 h-3" /> Cargar Factura
+                </Button>
+                <Button className="gap-2 text-xs bg-accent hover:bg-accent/90" size="sm" onClick={() => { setTxType("PAGO"); setIsTxDialogOpen(true); }}>
+                  <HandCoins className="w-3 h-3" /> Registrar Cobro (A Cuenta)
+                </Button>
               </div>
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold uppercase tracking-tight text-primary">Libro de IVA y Cobranzas</h3>
-                  <Button variant="ghost" size="sm" className="h-7 text-[10px] gap-2" onClick={() => setIsConciliateOpen(true)}>
-                    <ArrowRightLeft className="w-3 h-3" /> Conciliar Pagos
+                  <h3 className="text-sm font-bold uppercase tracking-tight text-primary">Movimientos de Cuenta</h3>
+                  <Button variant="ghost" size="sm" className="h-7 text-[10px] gap-2 border" onClick={() => setIsConciliateOpen(true)}>
+                    <ArrowRightLeft className="w-3 h-3" /> Módulo de Imputación
                   </Button>
                 </div>
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
                       <TableHead className="h-8 text-[10px]">Fecha</TableHead>
-                      <TableHead className="h-8 text-[10px]">Detalle / Obra</TableHead>
+                      <TableHead className="h-8 text-[10px]">Detalle</TableHead>
                       <TableHead className="h-8 text-[10px]">Estado</TableHead>
-                      <TableHead className="h-8 text-right text-[10px]">Importe</TableHead>
-                      <TableHead className="h-8 text-right text-[10px]">Saldo</TableHead>
+                      <TableHead className="h-8 text-right text-[10px]">Monto</TableHead>
+                      <TableHead className="h-8 text-right text-[10px]">Pendiente</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -441,7 +459,9 @@ export default function ClientsPage() {
                           <p className="text-muted-foreground truncate max-w-[150px]">{tx.reference}</p>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-[8px] uppercase">{tx.status || 'PENDIENTE'}</Badge>
+                          <Badge variant={tx.status === 'CONCILIADO' ? 'default' : 'outline'} className="text-[8px] uppercase">
+                            {tx.status || 'PENDIENTE'}
+                          </Badge>
                         </TableCell>
                         <TableCell className={cn(
                           "text-right text-xs font-bold",
@@ -641,56 +661,92 @@ export default function ClientsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Diálogo de Conciliación */}
+      {/* Diálogo de Conciliación Mejorado */}
       <Dialog open={isConciliateOpen} onOpenChange={setIsConciliateOpen}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Módulo de Imputación de Cobros</DialogTitle>
-            <DialogDescription>Aplique cobros recibidos a facturas pendientes de cancelación.</DialogDescription>
+            <DialogDescription>Aplique los cobros registrados "A Cuenta" a las facturas pendientes para regularizar saldos por comprobante.</DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-6">
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase text-primary">Facturas con Saldo Pendiente</Label>
-              <div className="border rounded-md overflow-hidden">
-                <Table>
-                  <TableHeader className="bg-muted/50"><TableRow><TableHead className="h-8 text-[10px]">Factura</TableHead><TableHead className="h-8 text-right text-[10px]">Pendiente</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                    {transactions?.filter(t => t.type === 'FACTURA' && t.remainingAmount > 0).map(inv => (
-                      <TableRow key={inv.id}>
-                        <TableCell className="text-[10px] font-bold">{inv.reference}</TableCell>
-                        <TableCell className="text-[10px] text-right">${inv.remainingAmount.toLocaleString()}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Columna Facturas */}
+              <div className="space-y-3">
+                <Label className="text-xs font-black uppercase text-primary flex items-center gap-2">
+                  <Receipt className="w-3 h-3" /> Facturas Pendientes
+                </Label>
+                <div className="border rounded-md overflow-hidden bg-muted/5">
+                  <Table>
+                    <TableHeader className="bg-muted/50"><TableRow><TableHead className="h-8 text-[9px]">Comprobante</TableHead><TableHead className="h-8 text-right text-[9px]">Saldo</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {transactions?.filter(t => (t.type === 'FACTURA' || t.type === 'CONTRATO') && t.remainingAmount > 0).map(inv => (
+                        <TableRow key={inv.id} className="cursor-default hover:bg-muted/20">
+                          <TableCell className="text-[10px] py-2">
+                            <p className="font-bold">{inv.reference}</p>
+                            <p className="text-[8px] text-muted-foreground">{format(new Date(inv.date), 'dd/MM/yy')}</p>
+                          </TableCell>
+                          <TableCell className="text-[10px] text-right font-mono">${inv.remainingAmount.toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                      {transactions?.filter(t => (t.type === 'FACTURA' || t.type === 'CONTRATO') && t.remainingAmount > 0).length === 0 && (
+                        <TableRow><TableCell colSpan={2} className="text-center py-4 text-[10px] italic text-muted-foreground">Sin facturas pendientes</TableCell></TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              {/* Columna Cobros */}
+              <div className="space-y-3">
+                <Label className="text-xs font-black uppercase text-accent flex items-center gap-2">
+                  <HandCoins className="w-3 h-3" /> Cobros a Imputar
+                </Label>
+                <div className="border rounded-md overflow-hidden bg-muted/5">
+                  <Table>
+                    <TableHeader className="bg-muted/50"><TableRow><TableHead className="h-8 text-[9px]">Cobro</TableHead><TableHead className="h-8 text-right text-[9px]">Disponible</TableHead><TableHead className="h-8 text-right text-[9px]">Acción</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {transactions?.filter(t => t.type === 'PAGO' && t.remainingAmount > 0).map(pay => (
+                        <TableRow key={pay.id} className="hover:bg-muted/20">
+                          <TableCell className="text-[10px] py-2">
+                            <p className="font-bold">{pay.reference}</p>
+                            <p className="text-[8px] text-muted-foreground">{format(new Date(pay.date), 'dd/MM/yy')}</p>
+                          </TableCell>
+                          <TableCell className="text-[10px] text-right font-mono">${pay.remainingAmount.toLocaleString()}</TableCell>
+                          <TableCell className="text-right">
+                            <Button 
+                              size="sm" 
+                              className="h-6 text-[8px] bg-accent hover:bg-accent/90" 
+                              onClick={() => {
+                                const invoice = transactions?.find(t => (t.type === 'FACTURA' || t.type === 'CONTRATO') && t.remainingAmount > 0);
+                                if (invoice) {
+                                  handleConciliate(invoice.id, pay.id, Math.min(invoice.remainingAmount, pay.remainingAmount));
+                                } else {
+                                  toast({ title: "No hay facturas pendientes", description: "No se encontró ningún comprobante de deuda para aplicar el cobro." });
+                                }
+                              }}
+                            >
+                              Aplicar
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {transactions?.filter(t => t.type === 'PAGO' && t.remainingAmount > 0).length === 0 && (
+                        <TableRow><TableCell colSpan={3} className="text-center py-4 text-[10px] italic text-muted-foreground">Sin cobros pendientes de aplicación</TableCell></TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase text-accent">Cobros a Imputar</Label>
-              <div className="border rounded-md overflow-hidden">
-                <Table>
-                  <TableHeader className="bg-muted/50"><TableRow><TableHead className="h-8 text-[10px]">Cobro</TableHead><TableHead className="h-8 text-right text-[10px]">Importe</TableHead><TableHead className="h-8 text-right text-[10px]">Acción</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                    {transactions?.filter(t => t.type === 'PAGO' && t.remainingAmount > 0).map(pay => (
-                      <TableRow key={pay.id}>
-                        <TableCell className="text-[10px] font-bold">{pay.reference}</TableCell>
-                        <TableCell className="text-[10px] text-right">${pay.remainingAmount.toLocaleString()}</TableCell>
-                        <TableCell className="text-right">
-                          <Button size="sm" className="h-6 text-[8px] bg-accent" onClick={() => {
-                            const invoice = transactions?.find(t => t.type === 'FACTURA' && t.remainingAmount > 0);
-                            if (invoice) handleConciliate(invoice.id, pay.id, Math.min(invoice.remainingAmount, pay.remainingAmount));
-                          }}>Imputar a Factura</Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+            <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex gap-2">
+              <Info className="w-4 h-4 text-blue-600 shrink-0" />
+              <p className="text-[10px] text-blue-800 leading-tight">
+                Al hacer clic en "Aplicar", el sistema descontará el monto del cobro disponible de la factura más antigua con saldo pendiente de forma automática.
+              </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsConciliateOpen(false)}>Cerrar</Button>
+            <Button variant="outline" onClick={() => setIsConciliateOpen(false)}>Finalizar Tareas</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
