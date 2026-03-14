@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect } from 'react';
@@ -12,6 +13,7 @@ import { doc } from 'firebase/firestore';
 import { Calculator, Loader2 } from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { Pie, PieChart, Cell, Legend } from 'recharts';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const chartConfig = {
   ManoObra: { label: "Mano de Obra", color: "hsl(var(--primary))" },
@@ -25,6 +27,7 @@ export default function TenderSimulatorPage() {
   const [mounted, setMounted] = useState(false);
   
   const [sqm, setSqm] = useState(100);
+  const [workType, setWorkType] = useState('vivienda_unifamiliar');
   const [laborHoursPerSqm, setLaborHoursPerSqm] = useState(40);
   const [materialsPerSqm, setMaterialsPerSqm] = useState(450000);
   const [desiredMargin, setDesiredMargin] = useState(15);
@@ -39,6 +42,19 @@ export default function TenderSimulatorPage() {
   }, [user, firestore]);
 
   const { data: config, isLoading } = useDoc(configRef);
+
+  // Sincronizar costo de materiales por m2 con la configuración global al cambiar tipología
+  useEffect(() => {
+    if (!config) return;
+    let baseCost = 0;
+    switch (workType) {
+      case 'vivienda_unifamiliar': baseCost = (config.viviendaSqmCost || 850000) * 0.6; break; // Estimación 60% materiales
+      case 'edificio_altura': baseCost = (config.edificioSqmCost || 1200000) * 0.6; break;
+      case 'obra_civil_comercial': baseCost = (config.civilSqmCost || 950000) * 0.6; break;
+      case 'industrial': baseCost = (config.industrialSqmCost || 750000) * 0.6; break;
+    }
+    if (baseCost > 0) setMaterialsPerSqm(Math.round(baseCost));
+  }, [workType, config]);
 
   if (!mounted) return null;
 
@@ -100,6 +116,21 @@ export default function TenderSimulatorPage() {
               <CardTitle className="text-sm">Parámetros de Obra</CardTitle>
             </CardHeader>
             <CardContent className="pt-6 space-y-6">
+              <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase">Tipología</Label>
+                <Select value={workType} onValueChange={setWorkType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="vivienda_unifamiliar">Vivienda Unifamiliar</SelectItem>
+                    <SelectItem value="edificio_altura">Edificio en Altura</SelectItem>
+                    <SelectItem value="obra_civil_comercial">Obra Civil Comercial</SelectItem>
+                    <SelectItem value="industrial">Nave Industrial</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-4">
                 <div className="flex justify-between items-end">
                   <Label className="text-xs font-bold">Superficie Total (m²)</Label>

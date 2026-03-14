@@ -16,6 +16,7 @@
           "description": "Clasificación de la obra/entrada."
         },
         "workType": { "type": "string", "description": "Tipo de trabajo (Vivienda, Civil, Industrial, etc.)" },
+        "surfaceSqm": { "type": "number", "description": "Superficie total en metros cuadrados." },
         "startDate": { "type": "string", "format": "date-time" },
         "plannedEndDate": { "type": "string", "format": "date-time" },
         "totalBudgetAmount": { "type": "number" },
@@ -55,7 +56,11 @@
         "materialWaste": { "type": "number", "default": 5 },
         "financialTax": { "type": "number", "default": 2 },
         "contingencyReserve": { "type": "number", "default": 5 },
-        "lifeInsurance": { "type": "number", "default": 500 }
+        "lifeInsurance": { "type": "number", "default": 500 },
+        "viviendaSqmCost": { "type": "number", "default": 850000 },
+        "edificioSqmCost": { "type": "number", "default": 1200000 },
+        "civilSqmCost": { "type": "number", "default": 950000 },
+        "industrialSqmCost": { "type": "number", "default": 750000 }
       }
     }
   },

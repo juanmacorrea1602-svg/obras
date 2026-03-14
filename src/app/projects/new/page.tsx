@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect } from 'react';
@@ -12,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Save, Plus, Trash2, HardHat, Gavel, Calculator, Info, ShieldAlert, Loader2, DollarSign } from 'lucide-react';
+import { Save, Plus, Trash2, HardHat, Gavel, Calculator, Info, ShieldAlert, Loader2, DollarSign, Ruler } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type BudgetBreakdown = {
@@ -51,6 +52,7 @@ export default function NewProjectPage() {
     name: '',
     type: 'licitacion_privada',
     workType: 'vivienda_unifamiliar',
+    surfaceSqm: '',
     description: '',
     location: '',
     totalBudgetAmount: '',
@@ -81,6 +83,26 @@ export default function NewProjectPage() {
       });
     }
   }, [globalConfig]);
+
+  // Simplificación de presupuesto: auto-calcular según superficie y tipo
+  useEffect(() => {
+    if (!globalConfig) return;
+    
+    const sqm = Number(formData.surfaceSqm);
+    if (!sqm) return;
+
+    let baseCost = 0;
+    switch (formData.workType) {
+      case 'vivienda_unifamiliar': baseCost = globalConfig.viviendaSqmCost || 850000; break;
+      case 'edificio_altura': baseCost = globalConfig.edificioSqmCost || 1200000; break;
+      case 'obra_civil_comercial': baseCost = globalConfig.civilSqmCost || 950000; break;
+      case 'industrial': baseCost = globalConfig.industrialSqmCost || 750000; break;
+    }
+
+    if (baseCost > 0) {
+      setFormData(prev => ({ ...prev, totalBudgetAmount: (sqm * baseCost).toString() }));
+    }
+  }, [formData.surfaceSqm, formData.workType, globalConfig]);
 
   if (!mounted) return null;
 
@@ -133,6 +155,7 @@ export default function NewProjectPage() {
     try {
       const projectData = {
         ...formData,
+        surfaceSqm: Number(formData.surfaceSqm),
         totalBudgetAmount: Number(formData.totalBudgetAmount),
         marginPercentage: Number(formData.marginPercentage),
         costConfig: costIncidencias,
@@ -313,13 +336,21 @@ export default function NewProjectPage() {
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Ubicación</Label>
-                  <Input name="location" placeholder="Ciudad, Barrio..." value={formData.location} onChange={handleInputChange} />
+                  <Label>Superficie Total (m²)</Label>
+                  <div className="relative">
+                    <Ruler className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                    <Input name="surfaceSqm" type="number" placeholder="0.00" value={formData.surfaceSqm} onChange={handleInputChange} className="pl-10" />
+                  </div>
                 </div>
               </div>
               <div className="grid gap-2">
+                <Label>Ubicación</Label>
+                <Input name="location" placeholder="Ciudad, Barrio..." value={formData.location} onChange={handleInputChange} />
+              </div>
+              <div className="grid gap-2">
                 <Label>Monto Objetivo de Venta / Presupuesto ($)</Label>
-                <Input name="totalBudgetAmount" type="number" placeholder="0.00" value={formData.totalBudgetAmount} onChange={handleInputChange} className="text-xl font-bold" />
+                <Input name="totalBudgetAmount" type="number" placeholder="0.00" value={formData.totalBudgetAmount} onChange={handleInputChange} className="text-xl font-bold bg-primary/5 border-primary/20" />
+                <p className="text-[10px] text-muted-foreground italic">Se calcula automáticamente según la superficie y tipo de trabajo, pero puedes ajustarlo.</p>
               </div>
               <div className="grid gap-2">
                 <Label>Descripción / Alcance</Label>
