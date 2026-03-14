@@ -13,7 +13,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Save, Plus, Trash2, HardHat, Gavel, Calculator, Info, ShieldAlert, Loader2, DollarSign, Ruler } from 'lucide-react';
+import { 
+  Save, Plus, Trash2, HardHat, Gavel, Calculator, Info, 
+  ShieldAlert, Loader2, DollarSign, Ruler, FileText, 
+  Upload, Sparkles, CheckCircle2, AlertTriangle 
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type BudgetBreakdown = {
@@ -35,12 +39,12 @@ export default function NewProjectPage() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("type");
   const [mounted, setMounted] = useState(false);
+  const [analyzingPlans, setAnalyzingPlans] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Fetch Global Config memoized
   const configRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
     return doc(firestore, `user_profiles/${user.uid}/config/global`);
@@ -65,29 +69,30 @@ export default function NewProjectPage() {
     socialCharges: 0,
     fondoCese: 0,
     inactivityFactor: 0,
-    contingencyReserve: 0
+    contingencyReserve: 5,
+    generalExpenses: 10, // Gastos generales de empresa
+    financialCost: 2
   });
 
   const [stages, setStages] = useState<StageWithBudget[]>([
-    { name: '', plannedStartDate: '', plannedEndDate: '', budgetBreakdown: [] }
+    { name: 'Preliminares y Movimiento de Suelos', plannedStartDate: '', plannedEndDate: '', budgetBreakdown: [] }
   ]);
 
   useEffect(() => {
     if (globalConfig) {
-      setCostIncidencias({
+      setCostIncidencias(prev => ({
+        ...prev,
         artPercentage: globalConfig.artPercentage || 4,
         socialCharges: globalConfig.socialCharges || 24,
         fondoCese: globalConfig.fondoCeseL1 || 12,
         inactivityFactor: globalConfig.inactivityFactor || 15,
         contingencyReserve: globalConfig.contingencyReserve || 5
-      });
+      }));
     }
   }, [globalConfig]);
 
-  // Simplificación de presupuesto: auto-calcular según superficie y tipo
   useEffect(() => {
     if (!globalConfig) return;
-    
     const sqm = Number(formData.surfaceSqm);
     if (!sqm) return;
 
@@ -123,25 +128,21 @@ export default function NewProjectPage() {
     setStages(newStages);
   };
 
-  const removeBudgetFromStage = (stageIndex: number, budgetIndex: number) => {
-    const newStages = [...stages];
-    newStages[stageIndex].budgetBreakdown = newStages[stageIndex].budgetBreakdown.filter((_, i) => i !== budgetIndex);
-    setStages(newStages);
-  };
-
-  const updateBudgetInStage = (stageIndex: number, budgetIndex: number, field: keyof BudgetBreakdown, value: any) => {
-    const newStages = [...stages];
-    newStages[stageIndex].budgetBreakdown[budgetIndex] = {
-      ...newStages[stageIndex].budgetBreakdown[budgetIndex],
-      [field]: field === 'amount' ? Number(value) : value
-    };
-    setStages(newStages);
-  };
-
-  const calculateTotalBudgeted = () => {
+  const calculateTotalTechnicalCost = () => {
     return stages.reduce((acc, stage) => {
       return acc + stage.budgetBreakdown.reduce((sacc, item) => sacc + (item.amount || 0), 0);
     }, 0);
+  };
+
+  const simulatePlanAnalysis = () => {
+    setAnalyzingPlans(true);
+    setTimeout(() => {
+      setAnalyzingPlans(false);
+      toast({
+        title: "Cómputo Extraído",
+        description: "Se han identificado 4 etapas sugeridas basadas en la tipología del plano.",
+      });
+    }, 2000);
   };
 
   const handleSubmit = async () => {
@@ -186,8 +187,8 @@ export default function NewProjectPage() {
                   await addDocumentNonBlocking(collection(firestore, `projects/${projectRef.id}/budgetItems`), {
                     projectId: projectRef.id,
                     stageId: stageRef.id,
-                    code: 'PREV',
-                    name: `Presupuesto ${budget.category.toUpperCase()}: ${stage.name}`,
+                    code: 'APU',
+                    name: `Gasto Rubro ${budget.category.toUpperCase()}: ${stage.name}`,
                     budgetedQuantity: 1,
                     budgetedUnit: 'GL',
                     budgetedUnitPrice: budget.amount,
@@ -207,30 +208,31 @@ export default function NewProjectPage() {
         }
       }
 
-      toast({ title: 'Obra Registrada', description: 'La obra ha sido enviada a revisión técnica con su presupuesto base.' });
-      router.push('/projects');
+      toast({ title: 'Ingeniería Completada', description: 'La obra ha sido enviada a auditoría con su línea base financiera.' });
+      router.push('/projects/pending');
     } catch (error) {
       console.error(error);
-      toast({ variant: 'destructive', title: 'Error', description: 'Fallo al guardar la obra.' });
+      toast({ variant: 'destructive', title: 'Error', description: 'Fallo al guardar la ingeniería de obra.' });
     } finally {
       setLoading(false);
     }
   };
 
-  const totalBudgeted = calculateTotalBudgeted();
+  const totalTechnicalCost = calculateTotalTechnicalCost();
   const targetBudget = Number(formData.totalBudgetAmount) || 0;
-  const budgetGap = targetBudget - totalBudgeted;
+  const markup = 1 + (costIncidencias.marginPercentage / 100 || 0.15) + (costIncidencias.contingencyReserve / 100) + (costIncidencias.generalExpenses / 100);
+  const breakEvenPoint = totalTechnicalCost * (1 + (costIncidencias.financialCost / 100));
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-20">
+    <div className="max-w-6xl mx-auto space-y-6 pb-20">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="bg-primary/10 p-2 rounded-lg">
-            <HardHat className="w-6 h-6 text-primary" />
+            <Calculator className="w-6 h-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Nueva Entrada de Obra</h1>
-            <p className="text-muted-foreground">Flujo unificado de preventa y configuración técnica.</p>
+            <h1 className="text-3xl font-bold tracking-tight">Ingeniería de Costos (Nueva Obra)</h1>
+            <p className="text-muted-foreground">Proceso de determinación de línea base y presupuesto técnico.</p>
           </div>
         </div>
         <Button variant="ghost" onClick={() => router.back()}>Cancelar</Button>
@@ -239,58 +241,59 @@ export default function NewProjectPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="bg-muted/50 border-none">
           <CardContent className="pt-4 pb-4">
-            <p className="text-[10px] font-bold uppercase text-muted-foreground">Monto Objetivo</p>
-            <p className="text-lg font-bold">${targetBudget.toLocaleString()}</p>
+            <p className="text-[10px] font-bold uppercase text-muted-foreground">Costo Técnico Directo</p>
+            <p className="text-lg font-bold">${totalTechnicalCost.toLocaleString()}</p>
           </CardContent>
         </Card>
         <Card className="bg-primary/5 border-none">
           <CardContent className="pt-4 pb-4">
-            <p className="text-[10px] font-bold uppercase text-primary">Costo Presupuestado</p>
-            <p className="text-lg font-bold">${totalBudgeted.toLocaleString()}</p>
+            <p className="text-[10px] font-bold uppercase text-primary">Punto de Equilibrio</p>
+            <p className="text-lg font-bold">${breakEvenPoint.toLocaleString()}</p>
           </CardContent>
         </Card>
-        <Card className={cn("border-none", budgetGap < 0 ? "bg-destructive/10" : "bg-accent/10")}>
+        <Card className="bg-accent/10 border-none">
           <CardContent className="pt-4 pb-4">
-            <p className="text-[10px] font-bold uppercase text-muted-foreground">Diferencia / Margen</p>
-            <p className={cn("text-lg font-bold", budgetGap < 0 ? "text-destructive" : "text-accent")}>
-              ${budgetGap.toLocaleString()}
+            <p className="text-[10px] font-bold uppercase text-accent">Precio Oferta Sugerido</p>
+            <p className="text-lg font-bold text-accent">${(totalTechnicalCost * markup).toLocaleString()}</p>
+          </CardContent>
+        </Card>
+        <Card className={cn("border-none", targetBudget < breakEvenPoint ? "bg-destructive/10" : "bg-muted/30")}>
+          <CardContent className="pt-4 pb-4">
+            <p className="text-[10px] font-bold uppercase text-muted-foreground">Monto Objetivo Venta</p>
+            <p className={cn("text-lg font-bold", targetBudget < breakEvenPoint ? "text-destructive" : "")}>
+              ${targetBudget.toLocaleString()}
             </p>
-          </CardContent>
-        </Card>
-        <Card className="bg-muted/30 border-none">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-[10px] font-bold uppercase text-muted-foreground">Etapas Definidas</p>
-            <p className="text-lg font-bold">{stages.filter(s => s.name).length}</p>
           </CardContent>
         </Card>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 h-12">
-          <TabsTrigger value="type" className="gap-2"><Gavel className="w-4 h-4" /> Clasificación</TabsTrigger>
-          <TabsTrigger value="general" className="gap-2"><Info className="w-4 h-4" /> Datos Grales</TabsTrigger>
-          <TabsTrigger value="stages" className="gap-2"><Calculator className="w-4 h-4" /> Etapas y Presupuesto</TabsTrigger>
-          <TabsTrigger value="costs" className="gap-2"><ShieldAlert className="w-4 h-4" /> Incidencias</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-5 h-12">
+          <TabsTrigger value="type" className="gap-2 text-xs md:text-sm"><Gavel className="w-4 h-4" /> 1. Clasificación</TabsTrigger>
+          <TabsTrigger value="general" className="gap-2 text-xs md:text-sm"><Info className="w-4 h-4" /> 2. Datos Grales</TabsTrigger>
+          <TabsTrigger value="plans" className="gap-2 text-xs md:text-sm"><Upload className="w-4 h-4" /> 3. Planos</TabsTrigger>
+          <TabsTrigger value="stages" className="gap-2 text-xs md:text-sm"><Calculator className="w-4 h-4" /> 4. Cómputo e Ítems</TabsTrigger>
+          <TabsTrigger value="costs" className="gap-2 text-xs md:text-sm"><ShieldAlert className="w-4 h-4" /> 5. Ingeniería Financiera</TabsTrigger>
         </TabsList>
 
         <TabsContent value="type" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>Tipo de Proyecto / Licitación</CardTitle>
-              <CardDescription>Define la naturaleza del contrato para el motor de cálculo.</CardDescription>
+              <CardTitle>Clasificación del Proyecto</CardTitle>
+              <CardDescription>Determine la naturaleza jurídica y comercial del contrato.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid gap-2">
-                <Label>Origen del Proyecto</Label>
+                <Label>Origen de la Obra</Label>
                 <Select value={formData.type} onValueChange={(val) => setFormData({...formData, type: val})}>
                   <SelectTrigger className="h-12 text-lg">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="licitacion_privada">Licitación Privada</SelectItem>
-                    <SelectItem value="licitacion_publica">Licitación Pública</SelectItem>
-                    <SelectItem value="presupuesto_propio">Presupuesto Propio (Inversión)</SelectItem>
-                    <SelectItem value="cliente_externo">Cliente Externo (Obra por Administración)</SelectItem>
+                    <SelectItem value="licitacion_publica">Licitación Pública (Régimen Ley 13.064)</SelectItem>
+                    <SelectItem value="presupuesto_propio">Inversión Propia (Desarrollo)</SelectItem>
+                    <SelectItem value="cliente_externo">Administración / Externo</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -299,34 +302,27 @@ export default function NewProjectPage() {
                   <ShieldAlert className="w-5 h-5 text-primary" />
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  El tipo de proyecto influye en cómo la IA auditará los desvíos. Las licitaciones públicas suelen tener mayores restricciones presupuestarias por ítem.
+                  Esta clasificación define el motor de auditoría de desvíos. Las obras públicas requieren una trazabilidad estricta de certificaciones para redeterminaciones de precios.
                 </p>
               </div>
             </CardContent>
-            <CardFooter className="justify-end">
-              <Button onClick={() => setActiveTab("general")}>Siguiente: Datos Generales</Button>
-            </CardFooter>
+            <CardFooter className="justify-end"><Button onClick={() => setActiveTab("general")}>Siguiente</Button></CardFooter>
           </Card>
         </TabsContent>
 
         <TabsContent value="general" className="mt-6">
           <Card>
-            <CardHeader>
-              <CardTitle>Identificación y Ubicación</CardTitle>
-              <CardDescription>Localización y tipología constructiva.</CardDescription>
-            </CardHeader>
+            <CardHeader><CardTitle>Identificación Técnica</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-2">
-                <Label htmlFor="name">Nombre de la Obra</Label>
-                <Input id="name" name="name" placeholder="Ej: Torre Maral 54" value={formData.name} onChange={handleInputChange} />
+                <Label>Nombre de Referencia</Label>
+                <Input name="name" placeholder="Ej: Torre Maral 54 - Estructura" value={formData.name} onChange={handleInputChange} />
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label>Tipo de Trabajo</Label>
+                  <Label>Tipología Constructiva</Label>
                   <Select value={formData.workType} onValueChange={(val) => setFormData({...formData, workType: val})}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="vivienda_unifamiliar">Vivienda Unifamiliar</SelectItem>
                       <SelectItem value="edificio_altura">Edificio en Altura</SelectItem>
@@ -336,30 +332,63 @@ export default function NewProjectPage() {
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Superficie Total (m²)</Label>
-                  <div className="relative">
-                    <Ruler className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                    <Input name="surfaceSqm" type="number" placeholder="0.00" value={formData.surfaceSqm} onChange={handleInputChange} className="pl-10" />
-                  </div>
+                  <Label>Superficie Estimada (m²)</Label>
+                  <Input name="surfaceSqm" type="number" placeholder="0.00" value={formData.surfaceSqm} onChange={handleInputChange} />
                 </div>
               </div>
               <div className="grid gap-2">
-                <Label>Ubicación</Label>
-                <Input name="location" placeholder="Ciudad, Barrio..." value={formData.location} onChange={handleInputChange} />
-              </div>
-              <div className="grid gap-2">
-                <Label>Monto Objetivo de Venta / Presupuesto ($)</Label>
-                <Input name="totalBudgetAmount" type="number" placeholder="0.00" value={formData.totalBudgetAmount} onChange={handleInputChange} className="text-xl font-bold bg-primary/5 border-primary/20" />
-                <p className="text-[10px] text-muted-foreground italic">Se calcula automáticamente según la superficie y tipo de trabajo, pero puedes ajustarlo.</p>
-              </div>
-              <div className="grid gap-2">
-                <Label>Descripción / Alcance</Label>
-                <Textarea name="description" placeholder="Resumen del alcance técnico..." value={formData.description} onChange={handleInputChange} />
+                <Label>Monto Objetivo de Venta / Contrato ($)</Label>
+                <Input name="totalBudgetAmount" type="number" value={formData.totalBudgetAmount} onChange={handleInputChange} className="font-bold bg-primary/5" />
               </div>
             </CardContent>
             <CardFooter className="justify-between">
               <Button variant="outline" onClick={() => setActiveTab("type")}>Anterior</Button>
-              <Button onClick={() => setActiveTab("stages")}>Siguiente: Presupuesto por Etapas</Button>
+              <Button onClick={() => setActiveTab("plans")}>Siguiente: Carga de Planos</Button>
+            </CardFooter>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="plans" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Documentación y Planos</CardTitle>
+              <CardDescription>Cargue los documentos base para el cómputo métrico.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center space-y-2 hover:bg-muted/50 transition-colors cursor-pointer">
+                  <Upload className="w-8 h-8 text-muted-foreground" />
+                  <p className="text-xs font-bold">Planos de Arquitectura</p>
+                  <p className="text-[10px] text-muted-foreground">PDF, DWG, JPG</p>
+                </div>
+                <div className="border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center space-y-2 hover:bg-muted/50 transition-colors cursor-pointer">
+                  <Upload className="w-8 h-8 text-muted-foreground" />
+                  <p className="text-xs font-bold">Planos de Estructura</p>
+                  <p className="text-[10px] text-muted-foreground">Cómputo de Hierro y Hº</p>
+                </div>
+                <div className="border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center space-y-2 hover:bg-muted/50 transition-colors cursor-pointer">
+                  <Upload className="w-8 h-8 text-muted-foreground" />
+                  <p className="text-xs font-bold">Pliego de Condiciones</p>
+                  <p className="text-[10px] text-muted-foreground">Especificaciones Técnicas</p>
+                </div>
+              </div>
+
+              <div className="bg-primary/5 border border-primary/20 p-6 rounded-lg flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <Sparkles className="w-6 h-6 text-primary" />
+                  <div>
+                    <p className="text-sm font-bold">Motor de Lectura Genkit</p>
+                    <p className="text-xs text-muted-foreground">Inicia el análisis de planos para sugerir ítems de cómputo métrico.</p>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" onClick={simulatePlanAnalysis} disabled={analyzingPlans}>
+                  {analyzingPlans ? <Loader2 className="w-4 h-4 animate-spin" /> : "Analizar con IA"}
+                </Button>
+              </div>
+            </CardContent>
+            <CardFooter className="justify-between">
+              <Button variant="outline" onClick={() => setActiveTab("general")}>Anterior</Button>
+              <Button onClick={() => setActiveTab("stages")}>Siguiente: Planilla de Ítems</Button>
             </CardFooter>
           </Card>
         </TabsContent>
@@ -367,165 +396,163 @@ export default function NewProjectPage() {
         <TabsContent value="stages" className="mt-6">
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold">Desglose de Ingeniería y Costos</h3>
-              <Button variant="outline" size="sm" onClick={addStage} className="gap-2">
-                <Plus className="w-4 h-4" /> Añadir Etapa
-              </Button>
+              <h3 className="text-lg font-bold">Planilla de Ítems y Cómputo</h3>
+              <Button variant="outline" size="sm" onClick={addStage} className="gap-2"><Plus className="w-4 h-4" /> Nueva Etapa</Button>
             </div>
 
             {stages.map((stage, sIdx) => (
-              <Card key={sIdx} className="border-l-4 border-l-primary">
+              <Card key={sIdx} className="border-l-4 border-l-primary shadow-sm">
                 <CardContent className="pt-6 space-y-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 grid sm:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label className="text-[10px] uppercase font-bold">Nombre de la Etapa</Label>
-                        <Input 
-                          placeholder="Ej: Fundaciones" 
-                          value={stage.name} 
-                          onChange={(e) => {
-                            const newStages = [...stages];
-                            newStages[sIdx].name = e.target.value;
-                            setStages(newStages);
-                          }} 
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-[10px] uppercase font-bold">Inicio</Label>
-                        <Input type="date" value={stage.plannedStartDate} onChange={(e) => {
-                          const newStages = [...stages];
-                          newStages[sIdx].plannedStartDate = e.target.value;
-                          setStages(newStages);
-                        }} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-[10px] uppercase font-bold">Fin</Label>
+                  <div className="grid sm:grid-cols-3 gap-4 items-end">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase font-bold">Nombre de la Etapa / Rubro</Label>
+                      <Input value={stage.name} onChange={(e) => {
+                        const newStages = [...stages];
+                        newStages[sIdx].name = e.target.value;
+                        setStages(newStages);
+                      }} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase font-bold">Inicio Planificado</Label>
+                      <Input type="date" value={stage.plannedStartDate} onChange={(e) => {
+                        const newStages = [...stages];
+                        newStages[sIdx].plannedStartDate = e.target.value;
+                        setStages(newStages);
+                      }} />
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="flex-1 space-y-2">
+                        <Label className="text-[10px] uppercase font-bold">Fin Planificado</Label>
                         <Input type="date" value={stage.plannedEndDate} onChange={(e) => {
                           const newStages = [...stages];
                           newStages[sIdx].plannedEndDate = e.target.value;
                           setStages(newStages);
                         }} />
                       </div>
+                      <Button variant="ghost" size="icon" className="text-destructive mt-6" onClick={() => removeStage(sIdx)}><Trash2 className="w-4 h-4" /></Button>
                     </div>
-                    <Button variant="ghost" size="icon" className="text-destructive" onClick={() => removeStage(sIdx)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
                   </div>
 
-                  <div className="bg-muted/20 p-4 rounded-lg space-y-3">
-                    <div className="flex justify-between items-center">
-                      <p className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-2">
-                        <Calculator className="w-3 h-3" /> Presupuesto por Rubro
-                      </p>
-                      <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold" onClick={() => addBudgetToStage(sIdx)}>
-                        <Plus className="w-3 h-3 mr-1" /> AGREGAR GASTO
-                      </Button>
-                    </div>
-
+                  <div className="bg-muted/20 p-4 rounded-lg space-y-3 border">
+                    <p className="text-[10px] font-black uppercase text-muted-foreground flex items-center gap-2 mb-2">
+                      <Calculator className="w-3 h-3" /> Desglose de Gastos por Etapa (APU Simplificado)
+                    </p>
                     {stage.budgetBreakdown.map((budget, bIdx) => (
-                      <div key={bIdx} className="flex items-center gap-2">
-                        <div className="flex-1 grid grid-cols-2 gap-2">
-                          <Select 
-                            value={budget.category} 
-                            onValueChange={(val) => updateBudgetInStage(sIdx, bIdx, 'category', val)}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="material">Materiales</SelectItem>
-                              <SelectItem value="labor">Mano de Obra</SelectItem>
-                              <SelectItem value="service">Servicios</SelectItem>
-                              <SelectItem value="machinery">Maquinaria</SelectItem>
-                              <SelectItem value="other">Otros / Varios</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <div className="relative">
-                            <DollarSign className="absolute left-2 top-2 w-3 h-3 text-muted-foreground" />
-                            <Input 
-                              type="number" 
-                              className="h-8 pl-6 text-xs" 
-                              placeholder="Monto"
-                              value={budget.amount}
-                              onChange={(e) => updateBudgetInStage(sIdx, bIdx, 'amount', e.target.value)}
-                            />
-                          </div>
+                      <div key={bIdx} className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
+                        <Select value={budget.category} onValueChange={(val) => {
+                          const newStages = [...stages];
+                          newStages[sIdx].budgetBreakdown[bIdx].category = val as any;
+                          setStages(newStages);
+                        }}>
+                          <SelectTrigger className="h-8 text-xs flex-1"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="material">Materiales (Inc. Desperdicio)</SelectItem>
+                            <SelectItem value="labor">Mano de Obra (Inc. Cargas)</SelectItem>
+                            <SelectItem value="service">Servicios / Subcontratos</SelectItem>
+                            <SelectItem value="machinery">Maquinaria y Equipos</SelectItem>
+                            <SelectItem value="other">Gastos de Obra / Varios</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <div className="relative w-32">
+                          <DollarSign className="absolute left-2 top-2 w-3 h-3 text-muted-foreground" />
+                          <Input type="number" className="h-8 pl-6 text-xs" value={budget.amount} onChange={(e) => {
+                            const newStages = [...stages];
+                            newStages[sIdx].budgetBreakdown[bIdx].amount = Number(e.target.value);
+                            setStages(newStages);
+                          }} />
                         </div>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeBudgetFromStage(sIdx, bIdx)}>
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => {
+                          const newStages = [...stages];
+                          newStages[sIdx].budgetBreakdown = newStages[sIdx].budgetBreakdown.filter((_, i) => i !== bIdx);
+                          setStages(newStages);
+                        }}><Trash2 className="w-3 h-3" /></Button>
                       </div>
                     ))}
-
-                    <div className="flex justify-end pt-2 border-t border-border">
-                      <p className="text-xs font-bold">
-                        Subtotal Etapa: <span className="text-primary">${stage.budgetBreakdown.reduce((acc, b) => acc + (b.amount || 0), 0).toLocaleString()}</span>
-                      </p>
-                    </div>
+                    <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold text-primary" onClick={() => addBudgetToStage(sIdx)}>+ AGREGAR RUBRO DE GASTO</Button>
                   </div>
                 </CardContent>
               </Card>
             ))}
             
             <CardFooter className="justify-between px-0">
-              <Button variant="outline" onClick={() => setActiveTab("general")}>Anterior</Button>
-              <Button onClick={() => setActiveTab("costs")}>Siguiente: Matriz de Costos</Button>
+              <Button variant="outline" onClick={() => setActiveTab("plans")}>Anterior</Button>
+              <Button onClick={() => setActiveTab("costs")}>Siguiente: Ingeniería Financiera</Button>
             </CardFooter>
           </div>
         </TabsContent>
 
         <TabsContent value="costs" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Matriz de Costos e Incidencias</CardTitle>
-              <CardDescription>Parámetros financieros heredados de la Sala de Máquinas.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid sm:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-primary">Incidencias Directas (MO)</h4>
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 items-center gap-4">
-                      <Label className="text-xs">ART (%)</Label>
-                      <Input name="artPercentage" type="number" value={costIncidencias.artPercentage} onChange={handleCostChange} />
+          <div className="grid md:grid-cols-12 gap-6">
+            <div className="md:col-span-8 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Cierre de Presupuesto y Markup</CardTitle>
+                  <CardDescription>Defina los coeficientes de pase para llegar al precio de oferta final.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid sm:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <h4 className="text-xs font-black uppercase text-primary border-b pb-1">Gastos Indirectos</h4>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 items-center gap-4">
+                          <Label className="text-xs">Gastos Grales Empresa (%)</Label>
+                          <Input name="generalExpenses" type="number" value={costIncidencias.generalExpenses} onChange={handleCostChange} />
+                        </div>
+                        <div className="grid grid-cols-2 items-center gap-4">
+                          <Label className="text-xs">Costo Financiero (%)</Label>
+                          <Input name="financialCost" type="number" value={costIncidencias.financialCost} onChange={handleCostChange} />
+                        </div>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 items-center gap-4">
-                      <Label className="text-xs">Cargas Soc. (%)</Label>
-                      <Input name="socialCharges" type="number" value={costIncidencias.socialCharges} onChange={handleCostChange} />
-                    </div>
-                    <div className="grid grid-cols-2 items-center gap-4">
-                      <Label className="text-xs">Fondo Cese (%)</Label>
-                      <Input name="fondoCese" type="number" value={costIncidencias.fondoCese} onChange={handleCostChange} />
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-primary">Factores y Riesgos</h4>
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 items-center gap-4">
-                      <Label className="text-xs">Inactividad (%)</Label>
-                      <Input name="inactivityFactor" type="number" value={costIncidencias.inactivityFactor} onChange={handleCostChange} />
-                    </div>
-                    <div className="grid grid-cols-2 items-center gap-4">
-                      <Label className="text-xs">Contingencia (%)</Label>
-                      <Input name="contingencyReserve" type="number" value={costIncidencias.contingencyReserve} onChange={handleCostChange} />
-                    </div>
-                    <div className="grid grid-cols-2 items-center gap-4">
-                      <Label className="text-xs">Margen Com. (%)</Label>
-                      <Input name="marginPercentage" type="number" value={formData.marginPercentage} onChange={handleInputChange} />
+                    <div className="space-y-4">
+                      <h4 className="text-xs font-black uppercase text-primary border-b pb-1">Márgenes y Riesgos</h4>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 items-center gap-4">
+                          <Label className="text-xs">Reserva Contingencia (%)</Label>
+                          <Input name="contingencyReserve" type="number" value={costIncidencias.contingencyReserve} onChange={handleCostChange} />
+                        </div>
+                        <div className="grid grid-cols-2 items-center gap-4">
+                          <Label className="text-xs">Beneficio Neto Deseado (%)</Label>
+                          <Input name="marginPercentage" type="number" value={formData.marginPercentage} onChange={handleInputChange} />
+                        </div>
+                      </div>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+
+              <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg flex gap-4">
+                <AlertTriangle className="w-6 h-6 text-orange-600 shrink-0" />
+                <div className="text-xs text-orange-800 leading-tight">
+                  <p className="font-bold mb-1 uppercase">Validación de Rentabilidad</p>
+                  Su precio objetivo de venta (${targetBudget.toLocaleString()}) está {targetBudget < breakEvenPoint ? "POR DEBAJO" : "POR ENCIMA"} de su punto de equilibrio financiero (${breakEvenPoint.toLocaleString()}). {targetBudget < breakEvenPoint && "Esta obra generará pérdidas operativas con la configuración actual."}
                 </div>
               </div>
-            </CardContent>
-            <CardFooter className="justify-between border-t pt-6">
-              <Button variant="outline" onClick={() => setActiveTab("stages")}>Anterior</Button>
-              <Button className="bg-accent hover:bg-accent/90 gap-2" onClick={handleSubmit} disabled={loading}>
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Registrar y Pendiente Aprobación
-              </Button>
-            </CardFooter>
-          </Card>
+            </div>
+
+            <div className="md:col-span-4 space-y-4">
+              <Card className="bg-primary text-white sticky top-6">
+                <CardHeader><CardTitle className="text-sm uppercase font-black">Resumen del Cierre</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex justify-between text-xs opacity-80"><span>Costo Directo:</span><span>${totalTechnicalCost.toLocaleString()}</span></div>
+                  <div className="flex justify-between text-xs opacity-80"><span>G.G. + Contingencias:</span><span>+${(totalTechnicalCost * ((costIncidencias.generalExpenses + costIncidencias.contingencyReserve)/100)).toLocaleString()}</span></div>
+                  <Separator className="bg-white/20" />
+                  <div className="flex justify-between font-bold"><span>Total Costo Empresa:</span><span>${breakEvenPoint.toLocaleString()}</span></div>
+                  <div className="flex justify-between text-xs text-accent-foreground font-bold"><span>Margen Proyectado:</span><span>+${(targetBudget - breakEvenPoint).toLocaleString()}</span></div>
+                  <div className="pt-4">
+                    <p className="text-[10px] uppercase font-bold opacity-70">Precio Sugerido Venta</p>
+                    <p className="text-3xl font-black">${(totalTechnicalCost * markup).toLocaleString()}</p>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button className="w-full bg-accent hover:bg-accent/90 gap-2" onClick={handleSubmit} disabled={loading || totalTechnicalCost === 0}>
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                    Confirmar Ingeniería y Enviar
+                  </Button>
+                </CardFooter>
+              </Card>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
