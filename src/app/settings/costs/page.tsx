@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { doc, collection, increment, getDocs } from 'firebase/firestore';
-import { HardHat, ShieldAlert, Loader2, Save, Calculator, Layers, Sparkles, RotateCcw } from 'lucide-react';
+import { HardHat, ShieldAlert, Loader2, Save, Calculator, Layers, Sparkles, RotateCcw, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function GlobalCostsPage() {
@@ -59,8 +59,9 @@ export default function GlobalCostsPage() {
   const handlePurge = async () => {
     if (!firestore || !user) return;
     
-    const confirmPurge = confirm("¿Está totalmente seguro? Esta acción eliminará TODOS los clientes, obras, gastos y legajos de personal de forma permanente para dejar la plataforma en blanco.");
-    if (!confirmPurge) return;
+    if (!confirm("¿Está totalmente seguro? Esta acción eliminará permanentemente TODOS los clientes, obras y registros para dejar la plataforma en blanco.")) {
+      return;
+    }
 
     setIsPurging(true);
     try {
@@ -68,44 +69,46 @@ export default function GlobalCostsPage() {
       
       for (const colName of collectionsToClear) {
         const snapshot = await getDocs(collection(firestore, colName));
-        for (const docSnap of snapshot.docs) {
+        
+        snapshot.docs.forEach(docSnap => {
           const docId = docSnap.id;
+          const docPath = `${colName}/${docId}`;
           
-          // Borrar subcolecciones de proyectos
+          // Borrado no bloqueante de subcolecciones detectadas
           if (colName === 'projects') {
-            const subs = ['budgetItems', 'stages', 'expenses', 'physicalProgressEntries', 'documents'];
-            for (const sub of subs) {
-              const subSnap = await getDocs(collection(firestore, `projects/${docId}/${sub}`));
-              subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `projects/${docId}/${sub}`, s.id)));
-            }
+            ['budgetItems', 'stages', 'expenses', 'physicalProgressEntries', 'documents'].forEach(sub => {
+              getDocs(collection(firestore, `${docPath}/${sub}`)).then(subSnap => {
+                subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `${docPath}/${sub}`, s.id)));
+              });
+            });
           }
           
-          // Borrar subcolecciones de clientes
           if (colName === 'clients') {
-            const subs = ['transactions', 'documents'];
-            for (const sub of subs) {
-              const subSnap = await getDocs(collection(firestore, `clients/${docId}/${sub}`));
-              subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `clients/${docId}/${sub}`, s.id)));
-            }
+            ['transactions', 'documents'].forEach(sub => {
+              getDocs(collection(firestore, `${docPath}/${sub}`)).then(subSnap => {
+                subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `${docPath}/${sub}`, s.id)));
+              });
+            });
           }
           
-          // Borrar subcolecciones de personal
           if (colName === 'hr_files') {
-            const subSnap = await getDocs(collection(firestore, `hr_files/${docId}/documents`));
-            subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `hr_files/${docId}/documents`, s.id)));
+            getDocs(collection(firestore, `${docPath}/documents`)).then(subSnap => {
+              subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `${docPath}/documents`, s.id)));
+            });
           }
           
-          // Borrar documento raíz
+          // Borrar documento raíz (No bloqueante)
           deleteDocumentNonBlocking(doc(firestore, colName, docId));
-        }
+        });
       }
       
       toast({ 
-        title: "Entorno Reseteado", 
-        description: "Se han eliminado todos los datos. La plataforma está lista para comenzar de cero." 
+        title: "Limpieza Iniciada", 
+        description: "Se ha disparado el borrado masivo. Los cambios se verán reflejados en breve." 
       });
     } catch (e) {
-      toast({ variant: "destructive", title: "Error en limpieza", description: "Hubo un problema al intentar vaciar la base de datos." });
+      console.error("Purge error:", e);
+      toast({ variant: "destructive", title: "Error en limpieza", description: "No se pudieron eliminar todos los registros." });
     } finally {
       setIsPurging(false);
     }
@@ -116,7 +119,7 @@ export default function GlobalCostsPage() {
     setIsSeeding(true);
     
     try {
-      // 1. Crear Clientes (utilizando .then para evitar await en mutaciones)
+      // 1. Cliente 1: Desarrolladora
       addDocumentNonBlocking(collection(firestore, 'clients'), {
         name: "Desarrollos del Atlántico S.A.",
         cuit: "30-71542365-9",
@@ -125,15 +128,15 @@ export default function GlobalCostsPage() {
         status: "ACTIVO",
         currentBalance: 0,
         creationDate: new Date().toISOString()
-      }).then(client1Ref => {
-        if (!client1Ref) return;
-        const c1Id = client1Ref.id;
+      }).then(clientRef => {
+        if (!clientRef) return;
+        const cId = clientRef.id;
         
-        // Crear Proyecto 1 vinculado a Cliente 1
+        // Obra Activa (Torre)
         const p1Amount = 540000000;
         addDocumentNonBlocking(collection(firestore, 'projects'), {
           name: "Torre Maral 60 - Estructura",
-          clientId: c1Id,
+          clientId: cId,
           type: "licitacion_privada",
           workType: "edificio_altura",
           surfaceSqm: 4500,
@@ -144,86 +147,46 @@ export default function GlobalCostsPage() {
           marginPercentage: 18,
           creationDate: new Date().toISOString(),
           startDate: new Date().toISOString()
-        }).then(p1Ref => {
-          if (!p1Ref) return;
-          const p1Id = p1Ref.id;
-
-          // Transacción de Contrato
-          addDocumentNonBlocking(collection(firestore, `clients/${c1Id}/transactions`), {
+        }).then(pRef => {
+          if (!pRef) return;
+          const pId = pRef.id;
+          
+          // Registrar Contrato en CC
+          addDocumentNonBlocking(collection(firestore, `clients/${cId}/transactions`), {
             type: 'CONTRATO',
             date: new Date().toISOString(),
             amount: p1Amount,
             remainingAmount: p1Amount,
             reference: `Contrato Obra: Torre Maral 60`,
             status: 'PENDIENTE',
-            projectId: p1Id,
+            projectId: pId,
             creationDate: new Date().toISOString()
           });
-          updateDocumentNonBlocking(doc(firestore, 'clients', c1Id), { currentBalance: increment(p1Amount) });
+          updateDocumentNonBlocking(doc(firestore, 'clients', cId), { currentBalance: increment(p1Amount) });
 
-          // Items de Presupuesto
-          addDocumentNonBlocking(collection(firestore, `projects/${p1Id}/budgetItems`), {
+          // Ítems de Obra con avance real para Dashboard
+          addDocumentNonBlocking(collection(firestore, `projects/${pId}/budgetItems`), {
             name: "Hormigón Armado s/Plano",
             code: "EST-01",
             budgetedTotalAmount: 320000000,
             currentPhysicalProgressPercentage: 45,
             accumulatedActualCost: 155000000,
             resourceType: "material",
-            projectId: p1Id
+            projectId: pId
           });
-          addDocumentNonBlocking(collection(firestore, `projects/${p1Id}/budgetItems`), {
+          addDocumentNonBlocking(collection(firestore, `projects/${pId}/budgetItems`), {
             name: "Mano de Obra Especializada",
             code: "MO-01",
             budgetedTotalAmount: 120000000,
             currentPhysicalProgressPercentage: 40,
             accumulatedActualCost: 52000000,
             resourceType: "labor",
-            projectId: p1Id
-          });
-        });
-
-        // Proyecto 3: Obra en Alerta para Cliente 1
-        const p3Amount = 42000000;
-        addDocumentNonBlocking(collection(firestore, 'projects'), {
-          name: "Residencia Playa Grande",
-          clientId: c1Id,
-          type: "cliente_externo",
-          workType: "vivienda_unifamiliar",
-          surfaceSqm: 350,
-          totalBudgetAmount: p3Amount,
-          currentStatus: "ALERTA",
-          location: "Calle Alem 3400, MDP",
-          responsibleAnalystId: user.uid,
-          marginPercentage: 25,
-          creationDate: new Date().toISOString()
-        }).then(p3Ref => {
-          if (!p3Ref) return;
-          const p3Id = p3Ref.id;
-
-          addDocumentNonBlocking(collection(firestore, `clients/${c1Id}/transactions`), {
-            type: 'CONTRATO',
-            date: new Date().toISOString(),
-            amount: p3Amount,
-            remainingAmount: p3Amount,
-            reference: `Contrato Obra: Residencia Playa Grande`,
-            status: 'PENDIENTE',
-            projectId: p3Id,
-            creationDate: new Date().toISOString()
-          });
-          updateDocumentNonBlocking(doc(firestore, 'clients', c1Id), { currentBalance: increment(p3Amount) });
-
-          addDocumentNonBlocking(collection(firestore, `projects/${p3Id}/budgetItems`), {
-            name: "Terminaciones Revestimientos",
-            code: "TER-05",
-            budgetedTotalAmount: 12000000,
-            currentPhysicalProgressPercentage: 10,
-            accumulatedActualCost: 18000000,
-            resourceType: "material",
-            projectId: p3Id
+            projectId: pId
           });
         });
       });
 
+      // 2. Cliente 2: Consorcio (Licitación)
       addDocumentNonBlocking(collection(firestore, 'clients'), {
         name: "Consorcio Edificio Varesse",
         cuit: "33-54879621-4",
@@ -232,19 +195,17 @@ export default function GlobalCostsPage() {
         status: "ACTIVO",
         currentBalance: 0,
         creationDate: new Date().toISOString()
-      }).then(client2Ref => {
-        if (!client2Ref) return;
-        const c2Id = client2Ref.id;
+      }).then(clientRef => {
+        if (!clientRef) return;
+        const cId = clientRef.id;
 
-        // Proyecto 2: Licitación
-        const p2Amount = 185000000;
         addDocumentNonBlocking(collection(firestore, 'projects'), {
           name: "Nave Industrial Parque Ind.",
-          clientId: c2Id,
+          clientId: cId,
           type: "licitacion_publica",
           workType: "industrial",
           surfaceSqm: 1200,
-          totalBudgetAmount: p2Amount,
+          totalBudgetAmount: 185000000,
           currentStatus: "PENDIENTE_APROBACION",
           location: "Ruta 88 km 5, MDP",
           responsibleAnalystId: user.uid,
@@ -253,10 +214,12 @@ export default function GlobalCostsPage() {
         });
       });
 
-      toast({ title: "Escenarios Generados", description: "Se han creado obras vinculadas a clientes reales con impacto financiero." });
+      toast({ 
+        title: "Escenarios Generados", 
+        description: "Se han creado clientes y obras vinculadas para pruebas reales." 
+      });
     } catch (e) {
-      console.error(e);
-      toast({ variant: "destructive", title: "Error al poblar datos" });
+      toast({ variant: "destructive", title: "Error", description: "Fallo al generar datos de prueba." });
     } finally {
       setIsSeeding(false);
     }
