@@ -12,55 +12,66 @@
         "description": { "type": "string" },
         "type": { 
           "type": "string", 
-          "enum": ["licitacion_privada", "licitacion_publica", "presupuesto_propio", "cliente_externo"],
-          "description": "Clasificación de la obra/entrada."
+          "enum": ["licitacion_privada", "licitacion_publica", "presupuesto_propio", "cliente_externo"]
         },
-        "workType": { "type": "string", "description": "Tipo de trabajo (Vivienda, Civil, Industrial, etc.)" },
-        "surfaceSqm": { "type": "number", "description": "Superficie total en metros cuadrados." },
+        "workType": { "type": "string" },
+        "surfaceSqm": { "type": "number" },
         "startDate": { "type": "string", "format": "date-time" },
         "plannedEndDate": { "type": "string", "format": "date-time" },
         "totalBudgetAmount": { "type": "number" },
         "currentStatus": { 
           "type": "string", 
-          "enum": ["PENDIENTE_APROBACION", "LICITACION", "OK", "FINALIZADO", "ALERTA"],
-          "default": "PENDIENTE_APROBACION"
+          "enum": ["PENDIENTE_APROBACION", "LICITACION", "OK", "FINALIZADO", "ALERTA"]
         },
         "location": { "type": "string" },
         "responsibleAnalystId": { "type": "string" },
         "marginPercentage": { "type": "number" },
-        "costConfig": {
-          "type": "object",
-          "properties": {
-            "artPercentage": { "type": "number" },
-            "socialCharges": { "type": "number" },
-            "fondoCese": { "type": "number" },
-            "inactivityFactor": { "type": "number" },
-            "contingencyReserve": { "type": "number" }
-          }
-        }
-      },
-      "required": ["id", "name", "type", "totalBudgetAmount", "currentStatus", "responsibleAnalystId"]
+        "clientId": { "type": "string" }
+      }
     },
-    "GlobalConfig": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "GlobalConfig",
+    "Client": {
       "type": "object",
-      "description": "Configuración maestra de variables de costo (UOCRA, ART, Cargas Sociales, etc.)",
       "properties": {
-        "uocraBasic": { "type": "number" },
-        "attendanceBonus": { "type": "number", "default": 20 },
-        "socialCharges": { "type": "number", "default": 24 },
-        "fondoCeseL1": { "type": "number", "default": 12 },
-        "artPercentage": { "type": "number", "default": 4 },
-        "inactivityFactor": { "type": "number", "default": 15 },
-        "materialWaste": { "type": "number", "default": 5 },
-        "financialTax": { "type": "number", "default": 2 },
-        "contingencyReserve": { "type": "number", "default": 5 },
-        "lifeInsurance": { "type": "number", "default": 500 },
-        "viviendaSqmCost": { "type": "number", "default": 850000 },
-        "edificioSqmCost": { "type": "number", "default": 1200000 },
-        "civilSqmCost": { "type": "number", "default": 950000 },
-        "industrialSqmCost": { "type": "number", "default": 750000 }
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "cuit": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVO", "INACTIVO", "MOROSO"] },
+        "currentBalance": { "type": "number" }
+      }
+    },
+    "Supplier": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "cuit": { "type": "string" },
+        "category": { "type": "string", "enum": ["Materiales", "Subcontratista", "Servicios", "Maquinaria"] },
+        "currentBalance": { "type": "number" }
+      }
+    },
+    "PaymentOrder": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "amount": { "type": "number" },
+        "paymentDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDIENTE", "PAGADO", "ANULADO"] },
+        "paymentMethod": { "type": "string", "enum": ["Efectivo", "Transferencia", "Cheque"] }
+      }
+    },
+    "HRFile": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "dni": { "type": "string" },
+        "category": { "type": "string" },
+        "entryDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVO", "BAJA", "LICENCIA"] }
       }
     }
   },
@@ -70,20 +81,24 @@
   "firestore": {
     "structure": [
       {
-        "path": "/user_profiles/{userId}/config/global",
-        "definition": {
-          "entityName": "GlobalConfig",
-          "schema": { "$ref": "#/backend/entities/GlobalConfig" },
-          "description": "Configuración de constantes de costo para el analista."
-        }
+        "path": "/projects/{projectId}",
+        "definition": { "entityName": "Project" }
       },
       {
-        "path": "/projects/{projectId}",
-        "definition": {
-          "entityName": "Project",
-          "schema": { "$ref": "#/backend/entities/Project" },
-          "description": "Proyectos y Licitaciones."
-        }
+        "path": "/clients/{clientId}",
+        "definition": { "entityName": "Client" }
+      },
+      {
+        "path": "/suppliers/{supplierId}",
+        "definition": { "entityName": "Supplier" }
+      },
+      {
+        "path": "/payment_orders/{orderId}",
+        "definition": { "entityName": "PaymentOrder" }
+      },
+      {
+        "path": "/hr_files/{fileId}",
+        "definition": { "entityName": "HRFile" }
       }
     ]
   }

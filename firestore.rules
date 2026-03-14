@@ -2,68 +2,38 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    /**
-     * OBRA CONTROL IA - FIRESTORE SECURITY RULES
-     * 
-     * Implementa un modelo de seguridad centrado en proyectos con acceso basado en roles.
-     * Se utiliza 'responsibleAnalystId' para identificar al propietario principal.
-     */
-
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    // Verifica si el usuario es el analista responsable o miembro del proyecto
-    // Se utiliza para proteger el documento del proyecto y sus subcolecciones
-    function canAccessProject(data) {
-      return isSignedIn() && (
-        data.responsibleAnalystId == request.auth.uid ||
-        (data.projectMembers != null && data.projectMembers[request.auth.uid] != null)
-      );
-    }
-
-    // --- REGLAS DE COLECCIONES ---
-
-    match /user_profiles/{userId} {
-      allow get, list, write: if isOwner(userId);
-      
-      // Permitir acceso a subcolecciones de configuración (como /config/global)
-      match /{allSubcollections=**} {
-        allow read, write: if isOwner(userId);
-      }
-    }
-
     match /projects/{projectId} {
-      // Permitir listar solo las obras donde el usuario es responsable o miembro
-      allow list: if isSignedIn();
-      
-      allow get: if canAccessProject(resource.data);
-      
-      allow create: if isSignedIn() && request.resource.data.responsibleAnalystId == request.auth.uid;
-      
-      allow update: if canAccessProject(resource.data);
-      
-      allow delete: if isSignedIn() && resource.data.responsibleAnalystId == request.auth.uid;
-
-      // Reglas recursivas para todas las subcolecciones (etapas, budgetItems, expenses, etc.)
-      // Heredan la lógica de acceso del proyecto padre mediante los campos denormalizados
+      allow read, write: if isSignedIn();
       match /{allSubcollections=**} {
-        allow list: if isSignedIn();
-        allow get: if canAccessProject(resource.data);
-        allow create: if isSignedIn() && request.resource.data.responsibleAnalystId == request.auth.uid;
-        allow update: if canAccessProject(resource.data);
-        allow delete: if isSignedIn() && resource.data.responsibleAnalystId == request.auth.uid;
+        allow read, write: if isSignedIn();
       }
+    }
+
+    match /clients/{clientId} {
+      allow read, write: if isSignedIn();
     }
 
     match /suppliers/{supplierId} {
       allow read, write: if isSignedIn();
-      allow delete: if false;
+    }
+
+    match /payment_orders/{orderId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /hr_files/{fileId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /user_profiles/{userId} {
+      allow read, write: if request.auth.uid == userId;
+      match /{allSubcollections=**} {
+        allow read, write: if request.auth.uid == userId;
+      }
     }
   }
 }

@@ -1,7 +1,12 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FilePlus2, HardHat, ClipboardCheck, Settings2, Clock, Calculator } from 'lucide-react';
+import { 
+  FilePlus2, HardHat, ClipboardCheck, Settings2, Clock, 
+  Calculator, Users, Truck, Wallet, FileBarChart, 
+  UserCircle, ScrollText, ShieldCheck
+} from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -17,43 +22,54 @@ import {
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
-const items = [
+const navGroups = [
   {
-    title: 'Nueva Entrada de Obra',
-    url: '/projects/new',
-    icon: FilePlus2,
-    highlight: true,
+    label: 'Nueva Entrada',
+    items: [
+      {
+        title: 'Nueva Obra / Licitación',
+        url: '/projects/new',
+        icon: FilePlus2,
+        highlight: true,
+      },
+    ]
   },
   {
-    title: 'Obras Activas',
-    url: '/projects',
-    icon: HardHat,
+    label: 'Operación PMO',
+    items: [
+      { title: 'Obras Activas', url: '/projects', icon: HardHat },
+      { title: 'Pendiente de Aprobación', url: '/projects/pending', icon: Clock },
+      { title: 'Registro de Gasto', url: '/expenses/new', icon: Calculator },
+      { title: 'Certificación de Campo', url: '/progress', icon: ClipboardCheck },
+    ]
   },
   {
-    title: 'Pendiente de Aprobación',
-    url: '/projects/pending',
-    icon: Clock,
+    label: 'Administración',
+    items: [
+      { title: 'Clientes & Cobranzas', url: '/admin/clients', icon: Users },
+      { title: 'Proveedores & Subcontratos', url: '/admin/suppliers', icon: Truck },
+      { title: 'Documentación de Obra', url: '/admin/documents', icon: ScrollText },
+    ]
   },
   {
-    title: 'Simulador Rápido',
-    url: '/tenders/simulator',
-    icon: Calculator,
+    label: 'Finanzas & Tesorería',
+    items: [
+      { title: 'Caja & Pagos', url: '/finance/treasury', icon: Wallet },
+      { title: 'Contabilidad & Bancos', url: '/finance/accounting', icon: FileBarChart },
+    ]
   },
   {
-    title: 'Registro de Gasto',
-    url: '/expenses/new',
-    icon: Calculator,
+    label: 'Recursos Humanos',
+    items: [
+      { title: 'Legajos & RRHH', url: '/hr/personnel', icon: UserCircle },
+    ]
   },
   {
-    title: 'Certificación de Campo',
-    url: '/progress',
-    icon: ClipboardCheck,
-  },
-  {
-    title: 'Sala de Máquinas',
-    url: '/settings/costs',
-    icon: Settings2,
-  },
+    label: 'Configuración',
+    items: [
+      { title: 'Sala de Máquinas', url: '/settings/costs', icon: Settings2 },
+    ]
+  }
 ];
 
 export function AppSidebar() {
@@ -90,39 +106,41 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/50 uppercase text-[10px] font-bold tracking-widest group-data-[collapsible=icon]:hidden px-2 mb-2">
-            Operación PMO
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-1">
-              {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton 
-                    asChild 
-                    tooltip={item.title}
-                    className={cn(
-                      "transition-all duration-200",
-                      item.highlight 
-                        ? "bg-accent text-accent-foreground font-bold hover:bg-accent/90 hover:text-accent-foreground shadow-md my-2 py-6 ring-1 ring-white/20" 
-                        : "text-sidebar-foreground/80 hover:bg-white/10 hover:text-white"
-                    )}
-                  >
-                    <Link href={item.url}>
-                      <item.icon className={cn("w-5 h-5", item.highlight ? "text-accent-foreground" : "text-sidebar-foreground/60")} />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {navGroups.map((group) => (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel className="text-sidebar-foreground/50 uppercase text-[9px] font-bold tracking-widest group-data-[collapsible=icon]:hidden px-2 mb-1">
+              {group.label}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {group.items.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton 
+                      asChild 
+                      tooltip={item.title}
+                      className={cn(
+                        "transition-all duration-200",
+                        item.highlight 
+                          ? "bg-accent text-accent-foreground font-bold hover:bg-accent/90 hover:text-accent-foreground shadow-sm mb-2 py-5 ring-1 ring-white/10" 
+                          : "text-sidebar-foreground/80 hover:bg-white/10 hover:text-white h-9"
+                      )}
+                    >
+                      <Link href={item.url}>
+                        <item.icon className={cn("w-4 h-4", item.highlight ? "text-accent-foreground" : "text-sidebar-foreground/60")} />
+                        <span className="text-xs">{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
       <SidebarFooter className="p-4 border-t border-sidebar-border/50 group-data-[collapsible=icon]:hidden">
         <div className="bg-sidebar-accent/30 rounded-lg p-3 border border-white/5">
-          <p className="text-[10px] uppercase font-bold text-sidebar-foreground/40 mb-1">Analista Senior</p>
-          <p className="text-sm font-semibold text-white truncate">Juan Manuel Correa</p>
+          <p className="text-[10px] uppercase font-bold text-sidebar-foreground/40 mb-1">Analista Operativo</p>
+          <p className="text-sm font-semibold text-white truncate">Panel de Control Central</p>
         </div>
       </SidebarFooter>
     </Sidebar>
