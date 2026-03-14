@@ -326,7 +326,8 @@ export default function ClientsPage() {
             <CardDescription className="text-accent font-bold uppercase text-[10px]">Cobros a Imputar</CardDescription>
             <CardTitle className="text-2xl text-accent">---</CardTitle>
           </CardHeader>
-        </div>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader>
