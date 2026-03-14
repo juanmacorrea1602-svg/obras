@@ -151,7 +151,7 @@ export default function ClientsPage() {
             <CardDescription className="text-accent font-bold uppercase text-[10px]">Efectividad de Cobro</CardDescription>
             <CardTitle className="text-2xl text-accent">94.2%</CardTitle>
           </CardHeader>
-        </div>
+        </Card>
       </div>
 
       <Card>
