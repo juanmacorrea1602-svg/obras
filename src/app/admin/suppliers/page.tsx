@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useFirebase, useCollection } from '@/firebase';
+import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
 import { Truck, Search, Plus, Filter, Calendar, Bell, DollarSign } from 'lucide-react';
 
@@ -19,9 +19,12 @@ export default function SuppliersPage() {
     setMounted(true);
   }, []);
 
-  const { data: suppliers, isLoading } = useCollection(
-    firestore ? query(collection(firestore, 'suppliers'), orderBy('name')) : null
-  );
+  const suppliersQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, 'suppliers'), orderBy('name'));
+  }, [firestore]);
+
+  const { data: suppliers, isLoading } = useCollection(suppliersQuery);
 
   if (!mounted) return null;
 

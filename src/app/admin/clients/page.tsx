@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useFirebase, useCollection } from '@/firebase';
+import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
 import { Users, Search, Plus, Filter, ArrowUpRight, MessageSquare, Wallet } from 'lucide-react';
 import { format } from 'date-fns';
@@ -21,9 +21,12 @@ export default function ClientsPage() {
     setMounted(true);
   }, []);
 
-  const { data: clients, isLoading } = useCollection(
-    firestore ? query(collection(firestore, 'clients'), orderBy('name')) : null
-  );
+  const clientsQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, 'clients'), orderBy('name'));
+  }, [firestore]);
+
+  const { data: clients, isLoading } = useCollection(clientsQuery);
 
   if (!mounted) return null;
 
@@ -54,7 +57,7 @@ export default function ClientsPage() {
         </Card>
         <Card className="bg-accent/5 border-accent/20">
           <CardHeader className="pb-2">
-            <CardDescription className="text-accent font-bold uppercase text-[10px]">Efectividad de Cobro</CardTitle>
+            <CardDescription className="text-accent font-bold uppercase text-[10px]">Efectividad de Cobro</CardDescription>
             <CardTitle className="text-2xl text-accent">94.2%</CardTitle>
           </CardHeader>
         </Card>

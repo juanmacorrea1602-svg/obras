@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useFirebase, useCollection } from '@/firebase';
+import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy, limit } from 'firebase/firestore';
 import { Wallet, DollarSign, ArrowUpCircle, ArrowDownCircle, Banknote, CreditCard, History } from 'lucide-react';
 
@@ -18,9 +18,12 @@ export default function TreasuryPage() {
     setMounted(true);
   }, []);
 
-  const { data: payments, isLoading } = useCollection(
-    firestore ? query(collection(firestore, 'payment_orders'), orderBy('paymentDate', 'desc'), limit(10)) : null
-  );
+  const paymentsQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, 'payment_orders'), orderBy('paymentDate', 'desc'), limit(10));
+  }, [firestore]);
+
+  const { data: payments, isLoading } = useCollection(paymentsQuery);
 
   if (!mounted) return null;
 

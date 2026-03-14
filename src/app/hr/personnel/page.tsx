@@ -7,9 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useFirebase, useCollection } from '@/firebase';
+import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy } from 'firebase/firestore';
 import { UserCircle, Search, Plus, FileText, ShieldCheck, HeartPulse, UserPlus } from 'lucide-react';
+import { format } from 'date-fns';
 
 export default function PersonnelPage() {
   const { firestore } = useFirebase();
@@ -19,9 +20,12 @@ export default function PersonnelPage() {
     setMounted(true);
   }, []);
 
-  const { data: hrFiles, isLoading } = useCollection(
-    firestore ? query(collection(firestore, 'hr_files'), orderBy('fullName')) : null
-  );
+  const hrFilesQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, 'hr_files'), orderBy('fullName'));
+  }, [firestore]);
+
+  const { data: hrFiles, isLoading } = useCollection(hrFilesQuery);
 
   if (!mounted) return null;
 
