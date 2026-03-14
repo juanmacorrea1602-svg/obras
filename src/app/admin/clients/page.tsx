@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect } from 'react';
@@ -11,12 +12,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, doc, where } from 'firebase/firestore';
+import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, setDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
+import { collection, query, orderBy, doc, where, increment } from 'firebase/firestore';
 import { 
   Users, Search, Plus, Filter, ArrowUpRight, MessageSquare, 
   Wallet, Loader2, FileText, Scale, CreditCard, Banknote, 
-  History, Upload, CheckCircle2, AlertCircle, Briefcase, Building2
+  History, Upload, CheckCircle2, AlertCircle, Briefcase, Building2,
+  FileSpreadsheet, Receipt, HandCoins, ArrowRightLeft, Target
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -45,6 +47,11 @@ export default function ClientsPage() {
   const [selectedClient, setSelectedClient] = useState<any | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("general");
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+
+  // Estados de Transacción
+  const [isTxDialogOpen, setIsTxDialogOpen] = useState(false);
+  const [txType, setTxType] = useState<"FACTURA" | "PAGO" | "CONTRATO">("FACTURA");
+  const [isConciliateOpen, setIsConciliateOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -108,10 +115,74 @@ export default function ClientsPage() {
     }
   };
 
+  const handleAddTransaction = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!firestore || !selectedClient) return;
+
+    setIsSubmitting(true);
+    const formData = new FormData(e.currentTarget);
+    const amount = Number(formData.get('amount'));
+    const projectId = formData.get('projectId') as string;
+    
+    const newTx = {
+      type: txType,
+      date: new Date().toISOString(),
+      amount: amount,
+      remainingAmount: amount,
+      reference: formData.get('reference') as string,
+      method: formData.get('method') as string,
+      status: 'PENDIENTE',
+      projectId: projectId || 'general',
+      creationDate: new Date().toISOString()
+    };
+
+    try {
+      // 1. Agregar transacción
+      await addDocumentNonBlocking(collection(firestore, `clients/${selectedClient.id}/transactions`), newTx);
+      
+      // 2. Actualizar saldo del cliente (Deuda sube con factura/contrato, baja con pago)
+      const balanceChange = (txType === 'PAGO') ? -amount : amount;
+      const clientRef = doc(firestore, 'clients', selectedClient.id);
+      await updateDocumentNonBlocking(clientRef, {
+        currentBalance: increment(balanceChange)
+      });
+
+      toast({ title: "Movimiento Registrado", description: `Se ha generado el registro de ${txType}.` });
+      setIsTxDialogOpen(false);
+    } catch (error) {
+      toast({ variant: "destructive", title: "Error", description: "No se pudo procesar la transacción." });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConciliate = async (invoiceId: string, paymentId: string, amountToApply: number) => {
+    if (!firestore || !selectedClient) return;
+
+    const invoiceRef = doc(firestore, `clients/${selectedClient.id}/transactions`, invoiceId);
+    const paymentRef = doc(firestore, `clients/${selectedClient.id}/transactions`, paymentId);
+
+    try {
+      // Restar del pendiente de la factura
+      await updateDocumentNonBlocking(invoiceRef, {
+        remainingAmount: increment(-amountToApply),
+        status: 'PARCIAL' // Simplificado para el MVP
+      });
+
+      // Restar del pendiente del pago
+      await updateDocumentNonBlocking(paymentRef, {
+        remainingAmount: increment(-amountToApply),
+        status: 'CONCILIADO'
+      });
+
+      toast({ title: "Conciliación Exitosa" });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error al conciliar" });
+    }
+  };
+
   const handleUploadDoc = async (docId: string, projectId: string = "general") => {
     if (!firestore || !selectedClient) return;
-    
-    // El ID del documento se compone por el tipo + el proyecto para permitir múltiples contratos
     const finalDocId = projectId === "general" ? docId : `${docId}_${projectId}`;
     const docRef = doc(firestore, `clients/${selectedClient.id}/documents`, finalDocId);
     
@@ -290,7 +361,7 @@ export default function ClientsPage() {
 
       {/* Panel Detalle de Cliente */}
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-        <SheetContent className="sm:max-w-2xl overflow-y-auto">
+        <SheetContent className="sm:max-w-3xl overflow-y-auto">
           <SheetHeader className="border-b pb-4 mb-6">
             <div className="flex items-center gap-4">
               <div className="bg-primary/10 p-3 rounded-full">
@@ -313,30 +384,41 @@ export default function ClientsPage() {
             </TabsList>
 
             <TabsContent value="account" className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <Card className="bg-muted/30 border-none shadow-none">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Card className="flex-1 bg-muted/30 border-none shadow-none">
                   <CardContent className="p-4">
-                    <p className="text-[10px] uppercase font-bold text-muted-foreground">Saldo Actual</p>
-                    <p className="text-xl font-bold">${(selectedClient?.currentBalance || 0).toLocaleString()}</p>
+                    <p className="text-[10px] uppercase font-bold text-muted-foreground">Saldo Pendiente Real</p>
+                    <p className="text-2xl font-black">${(selectedClient?.currentBalance || 0).toLocaleString()}</p>
                   </CardContent>
                 </Card>
-                <Card className="bg-accent/10 border-none shadow-none">
-                  <CardContent className="p-4">
-                    <p className="text-[10px] uppercase font-bold text-accent">Cobranza del Mes</p>
-                    <p className="text-xl font-bold text-accent">---</p>
-                  </CardContent>
-                </Card>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => { setTxType("CONTRATO"); setIsTxDialogOpen(true); }}>
+                    <Target className="w-3 h-3" /> Aplicar Contrato
+                  </Button>
+                  <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => { setTxType("FACTURA"); setIsTxDialogOpen(true); }}>
+                    <Receipt className="w-3 h-3" /> Facturar
+                  </Button>
+                  <Button className="gap-2 text-xs bg-accent hover:bg-accent/90" size="sm" onClick={() => { setTxType("PAGO"); setIsTxDialogOpen(true); }}>
+                    <HandCoins className="w-3 h-3" /> Registrar Cobro
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-3">
-                <h3 className="text-sm font-bold uppercase tracking-tight text-primary">Historial de Movimientos</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold uppercase tracking-tight text-primary">Libro de IVA y Cobranzas</h3>
+                  <Button variant="ghost" size="sm" className="h-7 text-[10px] gap-2" onClick={() => setIsConciliateOpen(true)}>
+                    <ArrowRightLeft className="w-3 h-3" /> Conciliar Pagos
+                  </Button>
+                </div>
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
                       <TableHead className="h-8 text-[10px]">Fecha</TableHead>
-                      <TableHead className="h-8 text-[10px]">Tipo / Referencia</TableHead>
-                      <TableHead className="h-8 text-[10px]">Medio</TableHead>
-                      <TableHead className="h-8 text-right text-[10px]">Monto</TableHead>
+                      <TableHead className="h-8 text-[10px]">Detalle / Obra</TableHead>
+                      <TableHead className="h-8 text-[10px]">Estado</TableHead>
+                      <TableHead className="h-8 text-right text-[10px]">Importe</TableHead>
+                      <TableHead className="h-8 text-right text-[10px]">Saldo</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -344,24 +426,32 @@ export default function ClientsPage() {
                       <TableRow key={tx.id}>
                         <TableCell className="text-[10px]">{format(new Date(tx.date), 'dd/MM/yy')}</TableCell>
                         <TableCell className="text-[10px]">
-                          <span className="font-bold">{tx.type}</span>
-                          <p className="text-muted-foreground">{tx.reference}</p>
+                          <span className="font-bold flex items-center gap-1">
+                            {tx.type === 'FACTURA' && <Receipt className="w-3 h-3 text-muted-foreground" />}
+                            {tx.type === 'PAGO' && <HandCoins className="w-3 h-3 text-accent" />}
+                            {tx.type === 'CONTRATO' && <Target className="w-3 h-3 text-primary" />}
+                            {tx.type}
+                          </span>
+                          <p className="text-muted-foreground truncate max-w-[150px]">{tx.reference}</p>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-[8px] uppercase">{tx.method || '---'}</Badge>
+                          <Badge variant="outline" className="text-[8px] uppercase">{tx.status || 'PENDIENTE'}</Badge>
                         </TableCell>
                         <TableCell className={cn(
                           "text-right text-xs font-bold",
-                          tx.type === 'PAGO' ? "text-accent" : "text-destructive"
+                          tx.type === 'PAGO' ? "text-accent" : "text-foreground"
                         )}>
                           {tx.type === 'PAGO' ? '-' : '+'}${tx.amount.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right text-xs font-mono opacity-70">
+                          ${(tx.remainingAmount || 0).toLocaleString()}
                         </TableCell>
                       </TableRow>
                     ))}
                     {(!transactions || transactions.length === 0) && (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground italic text-xs">
-                          No se registran movimientos en la cuenta corriente.
+                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground italic text-xs">
+                          Sin movimientos financieros.
                         </TableCell>
                       </TableRow>
                     )}
@@ -453,9 +543,6 @@ export default function ClientsPage() {
 
           <SheetFooter className="mt-8 pt-4 border-t">
             <div className="flex flex-col gap-2 w-full">
-              <Button className="w-full bg-accent hover:bg-accent/90 gap-2">
-                <Banknote className="w-4 h-4" /> Registrar Cobranza
-              </Button>
               <Button variant="ghost" className="w-full text-xs text-muted-foreground">
                 <MessageSquare className="w-3 h-3 mr-2" /> Contactar Administración del Cliente
               </Button>
@@ -463,6 +550,111 @@ export default function ClientsPage() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      {/* Diálogo Nueva Transacción */}
+      <Dialog open={isTxDialogOpen} onOpenChange={setIsTxDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <form onSubmit={handleAddTransaction}>
+            <DialogHeader>
+              <DialogTitle>Registro de {txType}</DialogTitle>
+              <DialogDescription>Incorpore un movimiento financiero a la cuenta corriente del cliente.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Vincular a Obra (Opcional)</Label>
+                <Select name="projectId">
+                  <SelectTrigger><SelectValue placeholder="Seleccione proyecto..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general">Legajo Institucional</SelectItem>
+                    {clientProjects?.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Monto ($)</Label>
+                <Input name="amount" type="number" step="0.01" placeholder="0.00" required />
+              </div>
+              <div className="grid gap-2">
+                <Label>Referencia / Nº Factura / Concepto</Label>
+                <Input name="reference" placeholder="Ej: Factura A 0001-00001234" required />
+              </div>
+              {txType === 'PAGO' && (
+                <div className="grid gap-2">
+                  <Label>Medio de Cobro</Label>
+                  <Select name="method" defaultValue="Transferencia">
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Transferencia">Transferencia Bancaria</SelectItem>
+                      <SelectItem value="E-Cheq">E-Cheq (Cheque Electrónico)</SelectItem>
+                      <SelectItem value="Efectivo">Efectivo (Caja Chica)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Confirmar Registro
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Conciliación */}
+      <Dialog open={isConciliateOpen} onOpenChange={setIsConciliateOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Módulo de Imputación de Cobros</DialogTitle>
+            <DialogDescription>Aplique cobros recibidos a facturas pendientes de cancelación.</DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-6">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase text-primary">Facturas con Saldo Pendiente</Label>
+              <div className="border rounded-md overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-muted/50"><TableRow><TableHead className="h-8 text-[10px]">Factura</TableHead><TableHead className="h-8 text-right text-[10px]">Pendiente</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {transactions?.filter(t => t.type === 'FACTURA' && t.remainingAmount > 0).map(inv => (
+                      <TableRow key={inv.id}>
+                        <TableCell className="text-[10px] font-bold">{inv.reference}</TableCell>
+                        <TableCell className="text-[10px] text-right">${inv.remainingAmount.toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase text-accent">Cobros a Imputar</Label>
+              <div className="border rounded-md overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-muted/50"><TableRow><TableHead className="h-8 text-[10px]">Cobro</TableHead><TableHead className="h-8 text-right text-[10px]">Importe</TableHead><TableHead className="h-8 text-right text-[10px]">Acción</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {transactions?.filter(t => t.type === 'PAGO' && t.remainingAmount > 0).map(pay => (
+                      <TableRow key={pay.id}>
+                        <TableCell className="text-[10px] font-bold">{pay.reference}</TableCell>
+                        <TableCell className="text-[10px] text-right">${pay.remainingAmount.toLocaleString()}</TableCell>
+                        <TableCell className="text-right">
+                          <Button size="sm" className="h-6 text-[8px] bg-accent" onClick={() => {
+                            const invoice = transactions?.find(t => t.type === 'FACTURA' && t.remainingAmount > 0);
+                            if (invoice) handleConciliate(invoice.id, pay.id, Math.min(invoice.remainingAmount, pay.remainingAmount));
+                          }}>Imputar a Factura</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsConciliateOpen(false)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

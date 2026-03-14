@@ -46,12 +46,14 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "type": { "type": "string", "enum": ["FACTURA", "PAGO", "NOTA_CREDITO"] },
+        "type": { "type": "string", "enum": ["CONTRATO", "FACTURA", "PAGO", "NOTA_CREDITO"] },
         "date": { "type": "string" },
         "amount": { "type": "number" },
+        "remainingAmount": { "type": "number", "description": "Saldo pendiente de cobro o aplicación" },
         "method": { "type": "string" },
         "reference": { "type": "string" },
-        "status": { "type": "string" }
+        "status": { "type": "string", "enum": ["PENDIENTE", "PARCIAL", "CONCILIADO", "ANULADO"] },
+        "projectId": { "type": "string" }
       }
     },
     "Supplier": {
