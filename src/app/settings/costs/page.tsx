@@ -6,9 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking, addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
-import { doc, collection, increment, getDocs, query, where } from 'firebase/firestore';
-import { HardHat, ShieldAlert, Loader2, Save, Calculator, Layers, Sparkles, RotateCcw, CheckCircle2 } from 'lucide-react';
+import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { doc, collection, increment, getDocs } from 'firebase/firestore';
+import { HardHat, ShieldAlert, Loader2, Save, Calculator, Layers, Sparkles, RotateCcw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function GlobalCostsPage() {
@@ -59,7 +59,7 @@ export default function GlobalCostsPage() {
   const handlePurge = async () => {
     if (!firestore || !user) return;
     
-    if (!confirm("¿Está totalmente seguro? Esta acción eliminará permanentemente TODOS los clientes, obras y registros para dejar la plataforma en blanco.")) {
+    if (!confirm("¿Desea resetear la plataforma? Se borrarán todas las obras, clientes y legajos. La configuración de costos se mantendrá.")) {
       return;
     }
 
@@ -73,128 +73,121 @@ export default function GlobalCostsPage() {
         
         for (const docSnap of snapshot.docs) {
           const docId = docSnap.id;
-          const docPath = `${colName}/${docId}`;
+          const rootDocRef = doc(firestore, colName, docId);
           
-          // Borrado de subcolecciones (lectura síncrona, borrado asíncrono)
-          if (colName === 'projects') {
-            const subs = ['budgetItems', 'stages', 'expenses', 'physicalProgressEntries', 'documents'];
-            for (const sub of subs) {
-              const subSnap = await getDocs(collection(firestore, `${docPath}/${sub}`));
-              subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `${docPath}/${sub}`, s.id)));
+          // Limpieza profunda de subcolecciones para cada documento
+          const subcollections: Record<string, string[]> = {
+            'projects': ['budgetItems', 'stages', 'expenses', 'physicalProgressEntries', 'documents'],
+            'clients': ['transactions', 'documents'],
+            'hr_files': ['documents']
+          };
+
+          if (subcollections[colName]) {
+            for (const sub of subcollections[colName]) {
+              const subSnap = await getDocs(collection(firestore, `${colName}/${docId}/${sub}`));
+              subSnap.forEach(s => {
+                deleteDocumentNonBlocking(doc(firestore, `${colName}/${docId}/${sub}`, s.id));
+              });
             }
-          }
-          
-          if (colName === 'clients') {
-            const subs = ['transactions', 'documents'];
-            for (const sub of subs) {
-              const subSnap = await getDocs(collection(firestore, `${docPath}/${sub}`));
-              subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `${docPath}/${sub}`, s.id)));
-            }
-          }
-          
-          if (colName === 'hr_files') {
-            const subSnap = await getDocs(collection(firestore, `${docPath}/documents`));
-            subSnap.forEach(s => deleteDocumentNonBlocking(doc(firestore, `${docPath}/documents`, s.id)));
           }
           
           // Borrar documento raíz
-          deleteDocumentNonBlocking(doc(firestore, colName, docId));
+          deleteDocumentNonBlocking(rootDocRef);
         }
       }
       
       toast({ 
-        title: "Limpieza Completada", 
-        description: "Se han eliminado todos los registros del entorno." 
+        title: "Entorno Limpio", 
+        description: "Se han eliminado todos los registros correctamente." 
       });
     } catch (e) {
       console.error("Purge error:", e);
-      toast({ variant: "destructive", title: "Error en limpieza", description: "No se pudieron eliminar todos los registros." });
+      toast({ variant: "destructive", title: "Error en Reset", description: "Fallo la limpieza de algunos registros." });
     } finally {
       setIsPurging(false);
     }
   };
 
-  const seedData = async () => {
+  const seedData = () => {
     if (!firestore || !user) return;
     setIsSeeding(true);
     
     try {
-      // 1. Cliente 1: Desarrolladora
-      const client1Data = {
+      // --- ESCENARIO 1: DESARROLLADORA (OBRA ACTIVA) ---
+      const client1Ref = doc(collection(firestore, 'clients'));
+      const c1Id = client1Ref.id;
+      const p1Ref = doc(collection(firestore, 'projects'));
+      const p1Id = p1Ref.id;
+      const p1Amount = 540000000;
+
+      // 1. Crear Cliente
+      setDocumentNonBlocking(client1Ref, {
         name: "Desarrollos del Atlántico S.A.",
         cuit: "30-71542365-9",
         contactPerson: "Ing. Marcos Paz",
         email: "obras@atlantico.com",
         status: "ACTIVO",
-        currentBalance: 0,
+        currentBalance: p1Amount,
         creationDate: new Date().toISOString()
-      };
+      }, { merge: true });
 
-      const client1Ref = await addDocumentNonBlocking(collection(firestore, 'clients'), client1Data);
-      
-      if (client1Ref) {
-        const cId = client1Ref.id;
-        const p1Amount = 540000000;
-        
-        const project1Data = {
-          name: "Torre Maral 60 - Estructura",
-          clientId: cId,
-          type: "licitacion_privada",
-          workType: "edificio_altura",
-          surfaceSqm: 4500,
-          totalBudgetAmount: p1Amount,
-          currentStatus: "OK",
-          location: "Av. Colón y la Costa, MDP",
-          responsibleAnalystId: user.uid,
-          marginPercentage: 18,
-          creationDate: new Date().toISOString(),
-          startDate: new Date().toISOString()
-        };
+      // 2. Crear Obra Vinculada
+      setDocumentNonBlocking(p1Ref, {
+        name: "Torre Maral 60 - Estructura",
+        clientId: c1Id,
+        type: "licitacion_privada",
+        workType: "edificio_altura",
+        surfaceSqm: 4500,
+        totalBudgetAmount: p1Amount,
+        currentStatus: "OK",
+        location: "Av. Colón y la Costa, MDP",
+        responsibleAnalystId: user.uid,
+        marginPercentage: 18,
+        creationDate: new Date().toISOString(),
+        startDate: new Date().toISOString()
+      }, { merge: true });
 
-        const p1Ref = await addDocumentNonBlocking(collection(firestore, 'projects'), project1Data);
-        
-        if (p1Ref) {
-          const pId = p1Ref.id;
-          
-          // Registrar Contrato en CC
-          addDocumentNonBlocking(collection(firestore, `clients/${cId}/transactions`), {
-            type: 'CONTRATO',
-            date: new Date().toISOString(),
-            amount: p1Amount,
-            remainingAmount: p1Amount,
-            reference: `Contrato Obra: Torre Maral 60`,
-            status: 'PENDIENTE',
-            projectId: pId,
-            creationDate: new Date().toISOString()
-          });
-          updateDocumentNonBlocking(doc(firestore, 'clients', cId), { currentBalance: increment(p1Amount) });
+      // 3. Registrar Contrato en Cuenta Corriente
+      setDocumentNonBlocking(doc(collection(firestore, `clients/${c1Id}/transactions`)), {
+        type: 'CONTRATO',
+        date: new Date().toISOString(),
+        amount: p1Amount,
+        remainingAmount: p1Amount,
+        reference: `Contrato Obra: Torre Maral 60`,
+        status: 'PENDIENTE',
+        projectId: p1Id,
+        creationDate: new Date().toISOString()
+      }, { merge: true });
 
-          // Ítems de Obra
-          addDocumentNonBlocking(collection(firestore, `projects/${pId}/budgetItems`), {
-            name: "Hormigón Armado s/Plano",
-            code: "EST-01",
-            budgetedTotalAmount: 320000000,
-            currentPhysicalProgressPercentage: 45,
-            accumulatedActualCost: 155000000,
-            resourceType: "material",
-            projectId: pId,
-            responsibleAnalystId: user.uid
-          });
-          addDocumentNonBlocking(collection(firestore, `projects/${pId}/budgetItems`), {
-            name: "Mano de Obra Especializada",
-            code: "MO-01",
-            budgetedTotalAmount: 120000000,
-            currentPhysicalProgressPercentage: 40,
-            accumulatedActualCost: 52000000,
-            resourceType: "labor",
-            projectId: pId,
-            responsibleAnalystId: user.uid
-          });
-        }
-      }
+      // 4. Cargar Ítems de Presupuesto (EVM)
+      setDocumentNonBlocking(doc(collection(firestore, `projects/${p1Id}/budgetItems`)), {
+        name: "Hormigón Armado s/Plano",
+        code: "EST-01",
+        budgetedTotalAmount: 320000000,
+        currentPhysicalProgressPercentage: 45,
+        accumulatedActualCost: 155000000,
+        resourceType: "material",
+        projectId: p1Id,
+        responsibleAnalystId: user.uid
+      }, { merge: true });
 
-      // 2. Cliente 2: Consorcio
-      const client2Data = {
+      setDocumentNonBlocking(doc(collection(firestore, `projects/${p1Id}/budgetItems`)), {
+        name: "Mano de Obra Especializada",
+        code: "MO-01",
+        budgetedTotalAmount: 120000000,
+        currentPhysicalProgressPercentage: 40,
+        accumulatedActualCost: 52000000,
+        resourceType: "labor",
+        projectId: p1Id,
+        responsibleAnalystId: user.uid
+      }, { merge: true });
+
+      // --- ESCENARIO 2: LICITACIÓN PENDIENTE ---
+      const client2Ref = doc(collection(firestore, 'clients'));
+      const c2Id = client2Ref.id;
+      const p2Ref = doc(collection(firestore, 'projects'));
+
+      setDocumentNonBlocking(client2Ref, {
         name: "Consorcio Edificio Varesse",
         cuit: "33-54879621-4",
         contactPerson: "Arq. Lucía Mendez",
@@ -202,25 +195,21 @@ export default function GlobalCostsPage() {
         status: "ACTIVO",
         currentBalance: 0,
         creationDate: new Date().toISOString()
-      };
+      }, { merge: true });
 
-      const client2Ref = await addDocumentNonBlocking(collection(firestore, 'clients'), client2Data);
-      
-      if (client2Ref) {
-        addDocumentNonBlocking(collection(firestore, 'projects'), {
-          name: "Nave Industrial Parque Ind.",
-          clientId: client2Ref.id,
-          type: "licitacion_publica",
-          workType: "industrial",
-          surfaceSqm: 1200,
-          totalBudgetAmount: 185000000,
-          currentStatus: "PENDIENTE_APROBACION",
-          location: "Ruta 88 km 5, MDP",
-          responsibleAnalystId: user.uid,
-          marginPercentage: 12,
-          creationDate: new Date().toISOString()
-        });
-      }
+      setDocumentNonBlocking(p2Ref, {
+        name: "Refacción Hall Central Varesse",
+        clientId: c2Id,
+        type: "cliente_externo",
+        workType: "vivienda_unifamiliar",
+        surfaceSqm: 120,
+        totalBudgetAmount: 45000000,
+        currentStatus: "PENDIENTE_APROBACION",
+        location: "Playa Varesse, MDP",
+        responsibleAnalystId: user.uid,
+        marginPercentage: 15,
+        creationDate: new Date().toISOString()
+      }, { merge: true });
 
       toast({ 
         title: "Escenarios Generados", 
@@ -234,17 +223,7 @@ export default function GlobalCostsPage() {
     }
   };
 
-  const calculateMultiplier = (vals: any) => {
-    if (!vals) return 1.75;
-    const attendance = (vals.attendanceBonus || 0) / 100;
-    const social = (vals.socialCharges || 0) / 100;
-    const cese = (vals.fondoCeseL1 || 0) / 100;
-    const art = (vals.artPercentage || 0) / 100;
-    const inactivity = (vals.inactivityFactor || 0) / 100;
-    return (1 + attendance) * (1 + social + cese + art + inactivity);
-  };
-
-  const multiplier = calculateMultiplier(config);
+  const multiplier = config ? (1 + (config.attendanceBonus || 20) / 100) * (1 + (config.socialCharges || 24) / 100 + (config.fondoCeseL1 || 12) / 100 + (config.artPercentage || 4) / 100 + (config.inactivityFactor || 15) / 100) : 1.75;
 
   if (isLoading) {
     return (
@@ -263,8 +242,8 @@ export default function GlobalCostsPage() {
             <Calculator className="w-6 h-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Sala de Máquinas (Variables Globales)</h1>
-            <p className="text-muted-foreground">Configura el motor de cálculo de costos y paramétricos m²</p>
+            <h1 className="text-3xl font-bold tracking-tight">Sala de Máquinas</h1>
+            <p className="text-muted-foreground">Motor de cálculo y gestión de datos maestros</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -294,22 +273,22 @@ export default function GlobalCostsPage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-xs uppercase font-black opacity-70">Multiplicador Real</CardTitle>
             <div className="text-4xl font-black">x{multiplier.toFixed(2)}</div>
-            <CardDescription className="text-white/80 text-[10px] leading-tight mt-1">
-              Factor de costo real empresa sobre el sueldo neto del operario.
+            <CardDescription className="text-white/80 text-[10px] mt-1 leading-tight">
+              Factor de costo real empresa sobre sueldo neto operario.
             </CardDescription>
           </CardHeader>
         </Card>
         <div className="md:col-span-3 grid grid-cols-3 gap-2">
            <div className="p-4 bg-muted/50 rounded-lg border flex flex-col justify-center">
-            <p className="text-[10px] font-bold uppercase text-muted-foreground">Inactividad Proyectada</p>
+            <p className="text-[10px] font-bold uppercase text-muted-foreground">Inactividad</p>
             <p className="text-xl font-bold">{config?.inactivityFactor || 15}%</p>
           </div>
           <div className="p-4 bg-muted/50 rounded-lg border flex flex-col justify-center">
-            <p className="text-[10px] font-bold uppercase text-muted-foreground">Fondo Cese Laboral</p>
+            <p className="text-[10px] font-bold uppercase text-muted-foreground">Fondo Cese</p>
             <p className="text-xl font-bold">{config?.fondoCeseL1 || 12}%</p>
           </div>
           <div className="p-4 bg-primary/5 rounded-lg border border-primary/10 flex flex-col justify-center">
-            <p className="text-[10px] font-bold uppercase text-primary">Costo Promedio Vivienda</p>
+            <p className="text-[10px] font-bold uppercase text-primary">Promedio Vivienda</p>
             <p className="text-xl font-bold">${(config?.viviendaSqmCost || 850000).toLocaleString()}/m²</p>
           </div>
         </div>
@@ -320,10 +299,9 @@ export default function GlobalCostsPage() {
           <div className="space-y-6">
             <Card className="shadow-sm">
               <CardHeader className="bg-muted/30">
-                <div className="flex items-center gap-2">
-                  <HardHat className="w-4 h-4 text-primary" />
-                  <CardTitle className="text-sm uppercase tracking-wider">Convenio y Cargas (M.O.)</CardTitle>
-                </div>
+                <CardTitle className="text-sm uppercase tracking-wider flex items-center gap-2">
+                  <HardHat className="w-4 h-4 text-primary" /> Convenio y Cargas
+                </CardTitle>
               </CardHeader>
               <CardContent className="pt-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -332,7 +310,7 @@ export default function GlobalCostsPage() {
                     <Input name="uocraBasic" type="number" step="0.01" defaultValue={config?.uocraBasic || 0} />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs">Asistencia Perfecta (%)</Label>
+                    <Label className="text-xs">Asistencia (%)</Label>
                     <Input name="attendanceBonus" type="number" defaultValue={config?.attendanceBonus || 20} />
                   </div>
                 </div>
@@ -352,37 +330,9 @@ export default function GlobalCostsPage() {
                     <Input name="artPercentage" type="number" defaultValue={config?.artPercentage || 4} />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs">Seg. Vida (Fijo $)</Label>
-                    <Input name="lifeInsurance" type="number" defaultValue={config?.lifeInsurance || 500} />
+                    <Label className="text-xs">Inactividad (%)</Label>
+                    <Input name="inactivityFactor" type="number" defaultValue={config?.inactivityFactor || 15} />
                   </div>
-                </div>
-                <div className="pt-2">
-                  <Label className="text-xs">Incidencia Inactividad (%)</Label>
-                  <Input name="inactivityFactor" type="number" defaultValue={config?.inactivityFactor || 15} />
-                  <p className="text-[9px] text-muted-foreground mt-1 italic">Previsión para días de lluvia y feriados pagados.</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm">
-              <CardHeader className="bg-muted/30">
-                <div className="flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 text-primary" />
-                  <CardTitle className="text-sm uppercase tracking-wider">Indirectos y Riesgos</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6 space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-xs">Desperdicio Materiales (%)</Label>
-                  <Input name="materialWaste" type="number" defaultValue={config?.materialWaste || 5} />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs">Impuesto Déb/Créd (%)</Label>
-                  <Input name="financialTax" type="number" defaultValue={config?.financialTax || 2} />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs">Reserva de Contingencia (%)</Label>
-                  <Input name="contingencyReserve" type="number" defaultValue={config?.contingencyReserve || 5} />
                 </div>
               </CardContent>
             </Card>
@@ -391,42 +341,33 @@ export default function GlobalCostsPage() {
           <div className="space-y-6">
             <Card className="shadow-sm border-primary/20">
               <CardHeader className="bg-primary/5">
-                <div className="flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-primary" />
-                  <CardTitle className="text-sm uppercase tracking-wider">Costos de Referencia por m²</CardTitle>
-                </div>
-                <CardDescription className="text-[10px]">Valores para pre-presupuestación rápida en nuevas entradas.</CardDescription>
+                <CardTitle className="text-sm uppercase tracking-wider flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-primary" /> Costos Ref. m²
+                </CardTitle>
               </CardHeader>
               <CardContent className="pt-6 space-y-4">
-                <div className="space-y-4">
+                <div className="grid gap-4">
                   <div className="grid gap-2">
                     <Label className="text-xs font-bold">Vivienda Unifamiliar ($/m²)</Label>
-                    <Input name="viviendaSqmCost" type="number" defaultValue={config?.viviendaSqmCost || 850000} className="font-mono" />
+                    <Input name="viviendaSqmCost" type="number" defaultValue={config?.viviendaSqmCost || 850000} />
                   </div>
                   <div className="grid gap-2">
                     <Label className="text-xs font-bold">Edificio en Altura ($/m²)</Label>
-                    <Input name="edificioSqmCost" type="number" defaultValue={config?.edificioSqmCost || 1200000} className="font-mono" />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label className="text-xs font-bold">Obra Civil / Comercial ($/m²)</Label>
-                    <Input name="civilSqmCost" type="number" defaultValue={config?.civilSqmCost || 950000} className="font-mono" />
+                    <Input name="edificioSqmCost" type="number" defaultValue={config?.edificioSqmCost || 1200000} />
                   </div>
                   <div className="grid gap-2">
                     <Label className="text-xs font-bold">Nave Industrial ($/m²)</Label>
-                    <Input name="industrialSqmCost" type="number" defaultValue={config?.industrialSqmCost || 750000} className="font-mono" />
+                    <Input name="industrialSqmCost" type="number" defaultValue={config?.industrialSqmCost || 750000} />
                   </div>
-                </div>
-                <div className="p-3 bg-accent/5 rounded border border-accent/20 text-[10px] text-accent font-medium leading-relaxed">
-                  Estos valores se utilizarán para auto-completar el monto objetivo al crear una nueva obra basándose en la superficie ingresada.
                 </div>
               </CardContent>
             </Card>
           </div>
         </div>
 
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end">
           <Button type="submit" className="gap-2 bg-primary">
-            <Save className="w-4 h-4" /> Guardar Variables Globales
+            <Save className="w-4 h-4" /> Guardar Cambios
           </Button>
         </div>
       </form>
@@ -435,8 +376,8 @@ export default function GlobalCostsPage() {
         <CardContent className="p-4 flex gap-4">
           <ShieldAlert className="w-6 h-6 text-orange-600 shrink-0" />
           <div className="text-xs text-orange-800 leading-tight">
-            <p className="font-bold mb-1 uppercase tracking-tighter">Nota Técnica Importante</p>
-            Al modificar estos valores, los presupuestos de **Licitaciones** se actualizarán en sus cálculos internos, pero las **Obras Activas** mantendrán el costo de línea base certificado al momento de su adjudicación para garantizar la trazabilidad financiera histórica.
+            <p className="font-bold mb-1 uppercase tracking-tighter">Nota Técnica</p>
+            Al resetear el entorno, se eliminarán permanentemente las obras y clientes para que puedas iniciar tu propia carga. La configuración de costos se mantiene para facilitar tus nuevos presupuestos.
           </div>
         </CardContent>
       </Card>
