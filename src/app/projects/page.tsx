@@ -1,17 +1,21 @@
+
 "use client"
 
 import { useEffect, useState } from 'react';
-import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
+import { useFirebase, useCollection, useMemoFirebase, deleteDocumentNonBlocking } from '@/firebase';
+import { collection, query, where, doc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Settings2, ExternalLink, HardHat, Loader2, TrendingUp } from 'lucide-react';
+import { PlusCircle, Settings2, ExternalLink, HardHat, Loader2, TrendingUp, Trash2 } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 
 export default function ProjectsPage() {
   const { user, firestore } = useFirebase();
+  const { toast } = useToast();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -20,7 +24,6 @@ export default function ProjectsPage() {
 
   const projectsQuery = useMemoFirebase(() => {
     if (!user || !firestore) return null;
-    // Mostrar solo obras activas (OK o FINALIZADO)
     return query(
       collection(firestore, 'projects'),
       where('responsibleAnalystId', '==', user.uid),
@@ -29,6 +32,17 @@ export default function ProjectsPage() {
   }, [user, firestore]);
 
   const { data: projects, isLoading } = useCollection(projectsQuery);
+
+  const handleDeleteProject = async (projectId: string) => {
+    if (!firestore) return;
+    try {
+      const projectRef = doc(firestore, 'projects', projectId);
+      await deleteDocumentNonBlocking(projectRef);
+      toast({ title: "Obra Eliminada", description: "El registro ha sido borrado permanentemente." });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error", description: "No se pudo eliminar la obra." });
+    }
+  };
 
   if (!mounted) return null;
 
@@ -75,11 +89,25 @@ export default function ProjectsPage() {
                         <Settings2 className="w-4 h-4" /> Gestionar
                       </Link>
                     </Button>
-                    <Button asChild variant="ghost" size="sm" className="gap-2">
-                      <Link href={`/projects/${project.id}`}>
-                        <ExternalLink className="w-4 h-4" /> Ver Detalle
-                      </Link>
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Eliminar Obra?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta acción borrará permanentemente la obra "{project.name}" y toda su trazabilidad asociada. No se puede deshacer.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction className="bg-destructive" onClick={() => handleDeleteProject(project.id)}>Eliminar Permanentemente</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               </CardHeader>

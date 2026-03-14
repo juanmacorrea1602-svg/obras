@@ -6,15 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking } from '@/firebase';
-import { doc } from 'firebase/firestore';
-import { HardHat, ShieldAlert, Loader2, Save, Calculator, MapPin, Layers } from 'lucide-react';
+import { useFirebase, useDoc, useMemoFirebase, setDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
+import { doc, collection, getDocs, deleteDoc, writeBatch } from 'firebase/firestore';
+import { HardHat, ShieldAlert, Loader2, Save, Calculator, MapPin, Layers, Database, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function GlobalCostsPage() {
   const { user, firestore } = useFirebase();
   const { toast } = useToast();
   const [mounted, setMounted] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -26,8 +27,6 @@ export default function GlobalCostsPage() {
   }, [user, firestore]);
 
   const { data: config, isLoading } = useDoc(configRef);
-
-  if (!mounted) return null;
 
   const handleSave = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -56,6 +55,116 @@ export default function GlobalCostsPage() {
     toast({ title: "Configuración Guardada", description: "Los cálculos de presupuesto usarán estos nuevos valores." });
   };
 
+  const seedData = async () => {
+    if (!firestore || !user) return;
+    setIsSeeding(true);
+    
+    try {
+      // 1. Crear Clientes
+      const clientsRef = collection(firestore, 'clients');
+      const client1 = await addDocumentNonBlocking(clientsRef, {
+        name: "Desarrollos del Atlántico S.A.",
+        cuit: "30-71542365-9",
+        contactPerson: "Ing. Marcos Paz",
+        email: "obras@atlantico.com",
+        status: "ACTIVO",
+        currentBalance: 0
+      });
+
+      const client2 = await addDocumentNonBlocking(clientsRef, {
+        name: "Consorcio Edificio Varesse",
+        cuit: "33-54879621-4",
+        contactPerson: "Arq. Lucía Mendez",
+        email: "administracion@varesse.com",
+        status: "ACTIVO",
+        currentBalance: 0
+      });
+
+      // 2. Crear Proyectos de ejemplo
+      const projectsRef = collection(firestore, 'projects');
+      
+      // Proyecto 1: Edificio Activo
+      const p1 = await addDocumentNonBlocking(projectsRef, {
+        name: "Torre Maral 60 - Estructura",
+        clientId: client1.id,
+        type: "licitacion_privada",
+        workType: "edificio_altura",
+        surfaceSqm: 4500,
+        totalBudgetAmount: 540000000,
+        currentStatus: "OK",
+        location: "Av. Colón y la Costa, MDP",
+        responsibleAnalystId: user.uid,
+        marginPercentage: 18,
+        creationDate: new Date().toISOString()
+      });
+
+      // Añadir items a P1
+      const p1ItemsRef = collection(firestore, `projects/${p1.id}/budgetItems`);
+      await addDocumentNonBlocking(p1ItemsRef, {
+        name: "Hormigón Armado s/Plano",
+        code: "EST-01",
+        budgetedTotalAmount: 320000000,
+        currentPhysicalProgressPercentage: 45,
+        accumulatedActualCost: 155000000,
+        resourceType: "material"
+      });
+      await addDocumentNonBlocking(p1ItemsRef, {
+        name: "Mano de Obra Especializada",
+        code: "MO-01",
+        budgetedTotalAmount: 120000000,
+        currentPhysicalProgressPercentage: 40,
+        accumulatedActualCost: 52000000,
+        resourceType: "labor"
+      });
+
+      // Proyecto 2: Licitación
+      await addDocumentNonBlocking(projectsRef, {
+        name: "Nave Industrial Parque Ind.",
+        clientId: client2.id,
+        type: "licitacion_publica",
+        workType: "industrial",
+        surfaceSqm: 1200,
+        totalBudgetAmount: 185000000,
+        currentStatus: "LICITACION",
+        location: "Ruta 88 km 5, MDP",
+        responsibleAnalystId: user.uid,
+        marginPercentage: 12,
+        creationDate: new Date().toISOString()
+      });
+
+      // Proyecto 3: Obra en Alerta
+      const p3 = await addDocumentNonBlocking(projectsRef, {
+        name: "Residencia Playa Grande",
+        clientId: client1.id,
+        type: "cliente_externo",
+        workType: "vivienda_unifamiliar",
+        surfaceSqm: 350,
+        totalBudgetAmount: 42000000,
+        currentStatus: "ALERTA",
+        location: "Calle Alem 3400, MDP",
+        responsibleAnalystId: user.uid,
+        marginPercentage: 25,
+        creationDate: new Date().toISOString()
+      });
+
+      const p3ItemsRef = collection(firestore, `projects/${p3.id}/budgetItems`);
+      await addDocumentNonBlocking(p3ItemsRef, {
+        name: "Terminaciones Revestimientos",
+        code: "TER-05",
+        budgetedTotalAmount: 12000000,
+        currentPhysicalProgressPercentage: 10,
+        accumulatedActualCost: 18000000, // Sobrecosto adrede
+        resourceType: "material"
+      });
+
+      toast({ title: "Escenarios Generados", description: "Se han creado 3 obras y 2 clientes de prueba." });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error al poblar datos" });
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
   const calculateMultiplier = (vals: any) => {
     if (!vals) return 1.75;
     const attendance = (vals.attendanceBonus || 0) / 100;
@@ -79,13 +188,21 @@ export default function GlobalCostsPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-20">
-      <div className="flex items-center gap-3">
-        <div className="bg-primary/10 p-2 rounded-lg">
-          <Calculator className="w-6 h-6 text-primary" />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="bg-primary/10 p-2 rounded-lg">
+            <Calculator className="w-6 h-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Sala de Máquinas (Variables Globales)</h1>
+            <p className="text-muted-foreground">Configura el motor de cálculo de costos y paramétricos m²</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Sala de Máquinas (Variables Globales)</h1>
-          <p className="text-muted-foreground">Configura el motor de cálculo de costos y paramétricos m²</p>
+        <div className="flex gap-2">
+          <Button variant="outline" className="gap-2 border-primary/30 text-primary" onClick={seedData} disabled={isSeeding}>
+            {isSeeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            Generar Escenarios de Prueba
+          </Button>
         </div>
       </div>
 
